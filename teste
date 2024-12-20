@@ -1,4 +1,11 @@
-def load_and_validate_data(file):
+import streamlit as st
+import pandas as pd
+import plotly.express as px
+from io import BytesIO
+
+
+# Função para carregar e validar os dados
+def load_and_prepare_data(file):
     try:
         # Carregar o arquivo Excel
         df = pd.read_excel(file)
@@ -6,17 +13,17 @@ def load_and_validate_data(file):
         # Padronizar os nomes das colunas
         df.columns = df.columns.str.strip().str.lower()
 
-        # Definir os nomes esperados das colunas
+        # Colunas obrigatórias
         required_columns = ['projetos', 'departament', 'fortifyonboardedstatus', 
                             'critical', 'high', 'medium', 'low']
 
         # Verificar se todas as colunas obrigatórias estão presentes
-        for col in required_columns:
-            if col not in df.columns:
-                st.error(f"Coluna obrigatória ausente no arquivo: {col}")
-                return None
+        missing_columns = [col for col in required_columns if col not in df.columns]
+        if missing_columns:
+            st.error(f"As seguintes colunas estão ausentes no arquivo: {', '.join(missing_columns)}")
+            return None
 
-        # Converter colunas de vulnerabilidades para números
+        # Garantir que as colunas numéricas contenham valores válidos
         numeric_columns = ['critical', 'high', 'medium', 'low']
         for col in numeric_columns:
             df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0).astype(int)
@@ -26,9 +33,87 @@ def load_and_validate_data(file):
 
         # Extrair nome base do projeto
         df['projeto base'] = df['projetos'].apply(lambda x: x.split('-')[0] if isinstance(x, str) else x)
-        
+
         return df
 
     except Exception as e:
         st.error(f"Erro ao processar o arquivo: {e}")
         return None
+
+
+# Função para criar gráficos e dashboards
+def create_dashboards(df):
+    # Título principal
+    st.title("Dashboard de Vulnerabilidades de Projetos")
+
+    # Filtro interativo por departamento
+    st.sidebar.subheader("Filtros")
+    selected_department = st.sidebar.selectbox("Selecione um Departamento", 
+                                                options=["Todos"] + df['departament'].unique().tolist())
+    if selected_department != "Todos":
+        df = df[df['departament'] == selected_department]
+
+    # Gráfico: Total de vulnerabilidades por projeto
+    st.header("Total de Vulnerabilidades por Projeto")
+    proj_vuln = df.groupby('projetos')['total vulnerabilidades'].sum().reset_index()
+    fig_proj_vuln = px.bar(proj_vuln, x='projetos', y='total vulnerabilidades', 
+                           title="Vulnerabilidades por Projeto", text='total vulnerabilidades')
+    fig_proj_vuln.update_traces(textposition='outside')
+    st.plotly_chart(fig_proj_vuln)
+
+    # Gráfico: Status de deploy
+    st.header("Status de Deploy dos Projetos")
+    deploy_status = df['fortifyonboardedstatus'].value_counts().reset_index()
+    deploy_status.columns = ['status', 'quantidade']
+    fig_deploy = px.pie(deploy_status, names='status', values='quantidade', title="Status de Deploy")
+    st.plotly_chart(fig_deploy)
+
+    # Gráfico: Vulnerabilidades por departamento
+    st.header("Vulnerabilidades por Departamento")
+    dept_vuln = df.groupby('departament')[['critical', 'high', 'medium', 'low']].sum().reset_index()
+    fig_dept_vuln = px.bar(dept_vuln, x='departament', y=['critical', 'high', 'medium', 'low'],
+                           title="Vulnerabilidades por Departamento", barmode='stack')
+    st.plotly_chart(fig_dept_vuln)
+
+    # Tabela: Projetos não deployados
+    st.header("Projetos Não Deployados")
+    not_deployed = df[df['fortifyonboardedstatus'].str.lower() != 'deployed']
+    st.write(not_deployed)
+
+
+# Função para gerar relatório Excel
+def generate_excel(df):
+    output = BytesIO()
+    with pd.ExcelWriter(output, engine='openpyxl') as writer:
+        df.to_excel(writer, index=False, sheet_name="Vulnerabilidades")
+    processed_data = output.getvalue()
+    return processed_data
+
+
+# App Principal
+def main():
+    # Configurações do sidebar
+    st.sidebar.title("Upload de Arquivo")
+    uploaded_file = st.sidebar.file_uploader("Carregue um arquivo Excel", type=["xlsx"])
+
+    # Carregar e processar os dados
+    if uploaded_file:
+        data = load_and_prepare_data(uploaded_file)
+
+        if data is not None:
+            # Criar os dashboards
+            create_dashboards(data)
+
+            # Botão para download do relatório
+            st.sidebar.subheader("Download do Relatório")
+            excel_data = generate_excel(data)
+            st.sidebar.download_button(label="Baixar Relatório Excel",
+                                        data=excel_data,
+                                        file_name="relatorio_vulnerabilidades.xlsx")
+    else:
+        st.write("Por favor, carregue um arquivo Excel para visualizar os dashboards.")
+
+
+# Executar o app
+if __name__ == "__main__":
+    main()
