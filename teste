@@ -4,7 +4,7 @@ import plotly.express as px
 from io import BytesIO
 
 
-# Função para carregar e validar os dados
+# Função para carregar e preparar os dados
 def load_and_prepare_data(file):
     try:
         # Carregar o arquivo Excel
@@ -31,6 +31,10 @@ def load_and_prepare_data(file):
         # Calcular total de vulnerabilidades
         df['total vulnerabilidades'] = df['critical'] + df['high'] + df['medium'] + df['low']
 
+        # Proporção de vulnerabilidades severas (críticas e altas)
+        df['proporcao severas'] = (df['critical'] + df['high']) / df['total vulnerabilidades']
+        df['proporcao severas'] = df['proporcao severas'].fillna(0)  # Evitar divisões por zero
+
         # Extrair nome base do projeto
         df['projeto base'] = df['projetos'].apply(lambda x: x.split('-')[0] if isinstance(x, str) else x)
 
@@ -43,37 +47,50 @@ def load_and_prepare_data(file):
 
 # Função para criar gráficos e dashboards
 def create_dashboards(df):
-    # Título principal
-    st.title("Dashboard de Vulnerabilidades de Projetos")
+    st.title("Dashboard Avançado de Vulnerabilidades")
 
-    # Filtro interativo por departamento
+    # Filtro por departamento
     st.sidebar.subheader("Filtros")
     selected_department = st.sidebar.selectbox("Selecione um Departamento", 
                                                 options=["Todos"] + df['departament'].unique().tolist())
     if selected_department != "Todos":
         df = df[df['departament'] == selected_department]
 
-    # Gráfico: Total de vulnerabilidades por projeto
-    st.header("Total de Vulnerabilidades por Projeto")
-    proj_vuln = df.groupby('projetos')['total vulnerabilidades'].sum().reset_index()
-    fig_proj_vuln = px.bar(proj_vuln, x='projetos', y='total vulnerabilidades', 
-                           title="Vulnerabilidades por Projeto", text='total vulnerabilidades')
-    fig_proj_vuln.update_traces(textposition='outside')
-    st.plotly_chart(fig_proj_vuln)
+    # Gráfico: Ranking de projetos mais vulneráveis
+    st.header("Ranking de Projetos Mais Vulneráveis")
+    top_vulnerable_projects = df.nlargest(10, 'total vulnerabilidades')
+    fig_top_projects = px.bar(top_vulnerable_projects, x='projetos', y='total vulnerabilidades', 
+                               title="Top 10 Projetos Mais Vulneráveis", text='total vulnerabilidades')
+    fig_top_projects.update_traces(textposition='outside')
+    st.plotly_chart(fig_top_projects)
 
-    # Gráfico: Status de deploy
-    st.header("Status de Deploy dos Projetos")
-    deploy_status = df['fortifyonboardedstatus'].value_counts().reset_index()
-    deploy_status.columns = ['status', 'quantidade']
-    fig_deploy = px.pie(deploy_status, names='status', values='quantidade', title="Status de Deploy")
-    st.plotly_chart(fig_deploy)
+    # Gráfico: Comparativo de severidade total
+    st.header("Comparativo de Vulnerabilidades por Severidade")
+    severity_totals = df[['critical', 'high', 'medium', 'low']].sum().reset_index()
+    severity_totals.columns = ['severidade', 'total']
+    fig_severity = px.bar(severity_totals, x='severidade', y='total', 
+                          title="Total de Vulnerabilidades por Severidade", text='total')
+    fig_severity.update_traces(textposition='outside')
+    st.plotly_chart(fig_severity)
 
-    # Gráfico: Vulnerabilidades por departamento
-    st.header("Vulnerabilidades por Departamento")
-    dept_vuln = df.groupby('departament')[['critical', 'high', 'medium', 'low']].sum().reset_index()
-    fig_dept_vuln = px.bar(dept_vuln, x='departament', y=['critical', 'high', 'medium', 'low'],
-                           title="Vulnerabilidades por Departamento", barmode='stack')
-    st.plotly_chart(fig_dept_vuln)
+    # Gráfico: Proporção de vulnerabilidades severas por projeto
+    st.header("Proporção de Vulnerabilidades Severas por Projeto")
+    severe_ratio = df[['projetos', 'proporcao severas']].sort_values('proporcao severas', ascending=False).head(10)
+    fig_severe_ratio = px.bar(severe_ratio, x='projetos', y='proporcao severas', 
+                              title="Projetos com Maior Proporção de Vulnerabilidades Severas",
+                              text='proporcao severas')
+    fig_severe_ratio.update_traces(textposition='outside')
+    st.plotly_chart(fig_severe_ratio)
+
+    # Gráfico: Projetos deployados por departamento
+    st.header("Total de Projetos Deployados por Departamento")
+    deployed_projects = df[df['fortifyonboardedstatus'].str.lower() == 'deployed']
+    deploy_by_department = deployed_projects['departament'].value_counts().reset_index()
+    deploy_by_department.columns = ['departamento', 'total projetos deployados']
+    fig_deploy_dept = px.bar(deploy_by_department, x='departamento', y='total projetos deployados',
+                             title="Projetos Deployados por Departamento", text='total projetos deployados')
+    fig_deploy_dept.update_traces(textposition='outside')
+    st.plotly_chart(fig_deploy_dept)
 
     # Tabela: Projetos não deployados
     st.header("Projetos Não Deployados")
