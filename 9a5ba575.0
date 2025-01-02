@@ -21,72 +21,49 @@ SzXNakPRBACerfOR9qS2vqQkTtsAlaZT7m9AmecVgFEhC99OOBCPGqPKCQvDBHQ7
 ufi92+G+18vaVWLglFDM05bNStSVZZHxwXIF
 -----END CERTIFICATE-----
 
-
 import pandas as pd
-import os
+import argparse
 
-def process_vulnerabilities(file_path, output_path):
-    """
-    Processa um arquivo CSV para calcular o total de vulnerabilidades por projeto
-    e por prioridade, exportando os resultados para um novo arquivo CSV.
 
-    Args:
-        file_path (str): Caminho do arquivo de entrada.
-        output_path (str): Caminho do arquivo de saída.
-    """
-    # Verifica se o arquivo existe
-    if not os.path.exists(file_path):
-        print(f"Erro: Arquivo não encontrado: {file_path}")
-        return
-
-    # Lê o arquivo CSV
+def process_vulnerabilities(input_file, output_file):
+    # Lê o arquivo CSV com normalização dos nomes das colunas
     try:
-        df = pd.read_csv(file_path)
+        df = pd.read_csv(input_file, delimiter=None)  # Auto-detecta delimitadores
+        df.columns = df.columns.str.strip().str.lower()  # Remove espaços e converte para minúsculas
     except Exception as e:
-        print(f"Erro ao ler o arquivo: {e}")
+        print(f"Erro ao ler o arquivo CSV: {e}")
         return
 
-    # Verifica se as colunas esperadas estão presentes
-    expected_columns = {'issueName', 'friority', 'projectVersionID'}
+    # Nomes esperados das colunas (em minúsculas)
+    expected_columns = {'issuename', 'friority', 'projectversionid'}
+
+    # Verifica se as colunas estão presentes
     if not expected_columns.issubset(df.columns):
+        print(f"Colunas encontradas no arquivo: {list(df.columns)}")
         print(f"O arquivo CSV deve conter as colunas: {expected_columns}")
         return
 
-    # Converte as colunas para minúsculas para evitar inconsistências
-    df.columns = df.columns.str.lower()
-
-    # Contabiliza as vulnerabilidades por prioridade e projeto
-    pivot_table = (
-        df.pivot_table(
-            index='projectversionid',
-            columns='friority',
-            values='issuename',
-            aggfunc='count',
-            fill_value=0
-        )
-        .reset_index()
-    )
-
-    # Ordena as colunas na saída
-    column_order = ['projectversionid', 'Critical', 'High', 'Medium', 'Low']
-    for col in column_order[1:]:
-        if col not in pivot_table.columns:
-            pivot_table[col] = 0  # Adiciona colunas ausentes com valor 0
-
-    # Reordena as colunas para uma saída consistente
-    pivot_table = pivot_table[column_order]
-
-    # Exporta para um novo arquivo CSV
+    # Agrupa os dados por projectVersionID e friority
     try:
-        pivot_table.to_csv(output_path, index=False)
-        print(f"Arquivo exportado com sucesso para {output_path}")
+        summary = (
+            df.groupby(['projectversionid', 'friority'])
+            .size()
+            .unstack(fill_value=0)
+            .reset_index()
+        )
     except Exception as e:
-        print(f"Erro ao salvar o arquivo: {e}")
+        print(f"Erro ao agrupar os dados: {e}")
+        return
+
+    # Exporta o resumo para o arquivo de saída
+    try:
+        summary.to_csv(output_file, index=False)
+        print(f"Resumo gerado com sucesso em: {output_file}")
+    except Exception as e:
+        print(f"Erro ao salvar o arquivo de saída: {e}")
+
 
 if __name__ == "__main__":
-    import argparse
-
-    # Configura o parser de argumentos
     parser = argparse.ArgumentParser(description="Processa um arquivo CSV de vulnerabilidades.")
     parser.add_argument(
         "input_file",
@@ -96,6 +73,12 @@ if __name__ == "__main__":
         "output_file",
         help="Caminho para o arquivo CSV de saída (ex.: vulnerabilities_summary.csv)"
     )
+
+    args = parser.parse_args()
+
+    # Executa o processamento
+    process_vulnerabilities(args.input_file, args.output_file)
+
 
     # Parseia os argumentos
     args = parser.parse_args()
