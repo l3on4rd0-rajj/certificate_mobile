@@ -20,3 +20,66 @@ EC59aTDkm/kH8mtFal6vlcWaOnPmgrs5cQ7pKWt427sS4F7uCdcjmmSDNFwDsjOT
 SzXNakPRBACerfOR9qS2vqQkTtsAlaZT7m9AmecVgFEhC99OOBCPGqPKCQvDBHQ7
 ufi92+G+18vaVWLglFDM05bNStSVZZHxwXIF
 -----END CERTIFICATE-----
+
+import streamlit as st
+import pandas as pd
+import plotly.express as px
+
+def main():
+    st.set_page_config(page_title="Fortify Vulnerabilities Dashboard", layout="wide")
+    st.title("Fortify Vulnerabilities Dashboard")
+
+    st.sidebar.header("Upload Files")
+    project_file = st.sidebar.file_uploader("Upload 'latest_versions.csv'", type=['csv'])
+    vulnerabilities_file = st.sidebar.file_uploader("Upload 'full_vulnerabilities_report.csv'", type=['csv'])
+
+    if project_file and vulnerabilities_file:
+        # Load data
+        projects_df = pd.read_csv(project_file)
+        vulnerabilities_df = pd.read_csv(vulnerabilities_file)
+
+        # Display data
+        st.header("Projects and Versions")
+        st.dataframe(projects_df)
+
+        st.header("Vulnerabilities")
+        st.dataframe(vulnerabilities_df)
+
+        # Data analysis and visualization
+        st.header("Data Insights")
+        col1, col2 = st.columns(2)
+
+        with col1:
+            st.subheader("Vulnerabilities by Severity")
+            if 'Severity' in vulnerabilities_df.columns:
+                severity_count = vulnerabilities_df['Severity'].value_counts().reset_index()
+                severity_count.columns = ['Severity', 'Count']
+                fig_severity = px.pie(severity_count, values='Count', names='Severity', title="Distribution of Vulnerabilities by Severity")
+                st.plotly_chart(fig_severity)
+            else:
+                st.write("Severity column not found in the uploaded vulnerabilities data.")
+
+        with col2:
+            st.subheader("Top Projects with Most Vulnerabilities")
+            if 'Project Name' in vulnerabilities_df.columns:
+                project_vulns = vulnerabilities_df['Project Name'].value_counts().head(10).reset_index()
+                project_vulns.columns = ['Project Name', 'Count']
+                fig_project = px.bar(project_vulns, x='Project Name', y='Count', title="Top 10 Projects with Most Vulnerabilities", text='Count')
+                st.plotly_chart(fig_project)
+            else:
+                st.write("Project Name column not found in the uploaded vulnerabilities data.")
+
+        # Display detailed filters
+        st.header("Detailed Analysis")
+        selected_project = st.selectbox("Select a Project for Details:", vulnerabilities_df['Project Name'].unique())
+        if selected_project:
+            project_details = vulnerabilities_df[vulnerabilities_df['Project Name'] == selected_project]
+            st.write(f"Details for Project: {selected_project}")
+            st.dataframe(project_details)
+
+    else:
+        st.write("Please upload both 'latest_versions.csv' and 'full_vulnerabilities_report.csv' to begin.")
+
+if __name__ == "__main__":
+    main()
+
