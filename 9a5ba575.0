@@ -46,6 +46,10 @@ def run_script(script_name, *args):
 
 def main():
     st.set_page_config(page_title="Fortify Vulnerabilities Dashboard", layout="wide")
+    
+    # Add the logo at the top of the page
+    st.image("logo-getnet.webp", use_column_width=True)
+
     st.title("Fortify Vulnerabilities Dashboard")
 
     st.sidebar.header("Run Data Collection Scripts")
@@ -76,10 +80,16 @@ def main():
 
         # Display data
         st.header("Projects and Versions")
-        st.dataframe(projects_df)
+        edited_projects_df = st.experimental_data_editor(projects_df, num_rows="dynamic")
 
         st.header("Vulnerabilities")
-        st.dataframe(vulnerabilities_df)
+        edited_vulnerabilities_df = st.experimental_data_editor(vulnerabilities_df, num_rows="dynamic")
+
+        # Save edited data
+        if st.button("Save Edited Data"):
+            edited_projects_df.to_csv(project_file, index=False)
+            edited_vulnerabilities_df.to_csv(vulnerabilities_file, index=False)
+            st.success("Edited data saved successfully.")
 
         # Data analysis and visualization
         st.header("Data Insights")
@@ -118,4 +128,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
