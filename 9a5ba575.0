@@ -23,8 +23,22 @@ ufi92+G+18vaVWLglFDM05bNStSVZZHxwXIF
 
 
 import pandas as pd
+import os
 
 def process_vulnerabilities(file_path, output_path):
+    """
+    Processa um arquivo CSV para calcular o total de vulnerabilidades por projeto
+    e por prioridade, exportando os resultados para um novo arquivo CSV.
+
+    Args:
+        file_path (str): Caminho do arquivo de entrada.
+        output_path (str): Caminho do arquivo de saída.
+    """
+    # Verifica se o arquivo existe
+    if not os.path.exists(file_path):
+        print(f"Erro: Arquivo não encontrado: {file_path}")
+        return
+
     # Lê o arquivo CSV
     try:
         df = pd.read_csv(file_path)
@@ -33,7 +47,7 @@ def process_vulnerabilities(file_path, output_path):
         return
 
     # Verifica se as colunas esperadas estão presentes
-    expected_columns = {'issuename', 'friority', 'projectversionid'}
+    expected_columns = {'issueName', 'friority', 'projectVersionID'}
     if not expected_columns.issubset(df.columns):
         print(f"O arquivo CSV deve conter as colunas: {expected_columns}")
         return
@@ -69,14 +83,22 @@ def process_vulnerabilities(file_path, output_path):
     except Exception as e:
         print(f"Erro ao salvar o arquivo: {e}")
 
-# Caminho do arquivo CSV de entrada e saída
-input_file_path = "full_vulnerabilities_report.csv"
-output_file_path = "vulnerabilities_summary.csv"
-
-# Executa o processamento
-process_vulnerabilities(input_file_path, output_file_path)
-
-        st.warning("Data files not found. Please run the scripts to generate the data.")
-
 if __name__ == "__main__":
-    main()
+    import argparse
+
+    # Configura o parser de argumentos
+    parser = argparse.ArgumentParser(description="Processa um arquivo CSV de vulnerabilidades.")
+    parser.add_argument(
+        "input_file",
+        help="Caminho para o arquivo CSV de entrada (ex.: full_vulnerabilities_report.csv)"
+    )
+    parser.add_argument(
+        "output_file",
+        help="Caminho para o arquivo CSV de saída (ex.: vulnerabilities_summary.csv)"
+    )
+
+    # Parseia os argumentos
+    args = parser.parse_args()
+
+    # Executa o processamento
+    process_vulnerabilities(args.input_file, args.output_file)
