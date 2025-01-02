@@ -33,8 +33,8 @@ def normalize_columns(df):
 
 def process_vulnerabilities(input_file):
     try:
-        # Carrega o arquivo CSV
-        df = pd.read_csv(input_file, delimiter=None)  # Auto-detecção de delimitador
+        # Tenta carregar o arquivo CSV com autodetecção de delimitador
+        df = pd.read_csv(input_file, sep=None, engine='python')  # Auto-detecção de delimitador
         df = normalize_columns(df)
     except Exception as e:
         print(f"Erro ao ler o arquivo CSV: {e}")
@@ -83,6 +83,12 @@ def process_vulnerabilities(input_file):
 
 if __name__ == "__main__":
     # Solicita o caminho do arquivo de entrada
+    input_file = input("Digite o caminho do arquivo CSV de entrada: ").strip()
+    if not os.path.exists(input_file):
+        print("Arquivo não encontrado. Verifique o caminho e tente novamente.")
+    else:
+        process_vulnerabilities(input_file)
+
     input_file = input("Digite o caminho do arquivo CSV de entrada: ").strip()
     if not os.path.exists(input_file):
         print("Arquivo não encontrado. Verifique o caminho e tente novamente.")
