@@ -21,3 +21,101 @@ SzXNakPRBACerfOR9qS2vqQkTtsAlaZT7m9AmecVgFEhC99OOBCPGqPKCQvDBHQ7
 ufi92+G+18vaVWLglFDM05bNStSVZZHxwXIF
 -----END CERTIFICATE-----
 
+
+import streamlit as st
+import pandas as pd
+import plotly.express as px
+import subprocess
+import os
+
+def run_script(script_name, *args):
+    """Run an external Python script and return its output."""
+    try:
+        result = subprocess.run(
+            ['python', script_name, *args],
+            text=True,
+            capture_output=True
+        )
+        if result.returncode != 0:
+            st.error(f"Error running {script_name}: {result.stderr}")
+            return None
+        return result.stdout
+    except Exception as e:
+        st.error(f"An error occurred while running the script: {e}")
+        return None
+
+def main():
+    st.set_page_config(page_title="Fortify Vulnerabilities Dashboard", layout="wide")
+    st.title("Fortify Vulnerabilities Dashboard")
+
+    st.sidebar.header("Run Data Collection Scripts")
+
+    if st.sidebar.button("Run Scripts"):
+        # Run the first script
+        st.sidebar.write("Running 'List Release IDs' script...")
+        output1 = run_script("list_release_ids.py")
+        if output1:
+            st.sidebar.success("'List Release IDs' script completed.")
+
+        # Run the second script
+        st.sidebar.write("Running 'Get ALL JSON Data' script...")
+        output2 = run_script("get_all_json_data.py")
+        if output2:
+            st.sidebar.success("'Get ALL JSON Data' script completed.")
+
+    # Check for output files
+    project_file = 'latest_versions.csv'
+    vulnerabilities_file = 'full_vulnerabilities_report.csv'
+
+    if os.path.exists(project_file) and os.path.exists(vulnerabilities_file):
+        st.sidebar.success("Data files found.")
+
+        # Load data
+        projects_df = pd.read_csv(project_file)
+        vulnerabilities_df = pd.read_csv(vulnerabilities_file)
+
+        # Display data
+        st.header("Projects and Versions")
+        st.dataframe(projects_df)
+
+        st.header("Vulnerabilities")
+        st.dataframe(vulnerabilities_df)
+
+        # Data analysis and visualization
+        st.header("Data Insights")
+        col1, col2 = st.columns(2)
+
+        with col1:
+            st.subheader("Vulnerabilities by Severity")
+            if 'Severity' in vulnerabilities_df.columns:
+                severity_count = vulnerabilities_df['Severity'].value_counts().reset_index()
+                severity_count.columns = ['Severity', 'Count']
+                fig_severity = px.pie(severity_count, values='Count', names='Severity', title="Distribution of Vulnerabilities by Severity")
+                st.plotly_chart(fig_severity)
+            else:
+                st.write("Severity column not found in the uploaded vulnerabilities data.")
+
+        with col2:
+            st.subheader("Top Projects with Most Vulnerabilities")
+            if 'Project Name' in vulnerabilities_df.columns:
+                project_vulns = vulnerabilities_df['Project Name'].value_counts().head(10).reset_index()
+                project_vulns.columns = ['Project Name', 'Count']
+                fig_project = px.bar(project_vulns, x='Project Name', y='Count', title="Top 10 Projects with Most Vulnerabilities", text='Count')
+                st.plotly_chart(fig_project)
+            else:
+                st.write("Project Name column not found in the uploaded vulnerabilities data.")
+
+        # Display detailed filters
+        st.header("Detailed Analysis")
+        selected_project = st.selectbox("Select a Project for Details:", vulnerabilities_df['Project Name'].unique())
+        if selected_project:
+            project_details = vulnerabilities_df[vulnerabilities_df['Project Name'] == selected_project]
+            st.write(f"Details for Project: {selected_project}")
+            st.dataframe(project_details)
+
+    else:
+        st.warning("Data files not found. Please run the scripts to generate the data.")
+
+if __name__ == "__main__":
+    main()
+
