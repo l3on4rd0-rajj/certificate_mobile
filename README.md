@@ -1,20 +1,16 @@
-findstr /R "[0-9]\{1,3\}\.[0-9]\{1,3\}\.[0-9]\{1,3\}\.[0-9]\{1,3\}" arquivo_de_log.txt | sort | uniq -c
-
-
 import re
-from collections import Counter
 
-# Abre o arquivo de log
-with open('arquivo_de_log.txt', 'r') as file:
-    logs = file.read()
+# File path
+file_path = '/mnt/data/log.txt'
 
-# Expressão regular para encontrar IPs no arquivo de log
-ip_pattern = re.compile(r'\d+\.\d+\.\d+\.\d+')
-ips = ip_pattern.findall(logs)
+# Read the file and count unique IP addresses
+with open(file_path, 'r') as file:
+    log_data = file.read()
 
-# Conta a frequência de cada IP
-ip_count = Counter(ips)
+# Regular expression for IP addresses
+ip_pattern = re.compile(r'\b(?:[0-9]{1,3}\.){3}[0-9]{1,3}\b')
+ips = ip_pattern.findall(log_data)
+unique_ips = set(ips)
 
-# Imprime os IPs e suas respectivas contagens
-for ip, count in ip_count.items():
-    print(f'{ip}: {count}')
+# Count of unique IPs
+len(unique_ips)
