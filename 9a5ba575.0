@@ -1,19 +1,27 @@
 grep -oE "\b([0-9]{1,3}\.){3}[0-9]{1,3}\b" access.log | sort | uniq -c | sort -nr
-ntb
 
 #!/bin/bash
 
-# Verifica se o arquivo lista_ips.txt existe
-if [ ! -f lista_ips.txt ]; then
-    echo "Erro: O arquivo lista_ips.txt não foi encontrado!"
+# Verifica se o arquivo de sub-redes existe
+if [ ! -f lista_subredes.txt ]; then
+    echo "Erro: O arquivo lista_subredes.txt não foi encontrado!"
     exit 1
 fi
 
-# Loop pelos IPs do arquivo e verifica compartilhamentos SMB
-while read -r ip; do
-    echo "Verificando $ip..."
-    smbclient -L "\\$ip" -U guest% 2>/dev/null
-done < lista_ips.txt
+# Loop para cada sub-rede no arquivo
+while read -r subnet; do
+    echo "Expandindo sub-rede: $subnet..."
+    
+    # Gera todos os IPs da sub-rede /24
+    for ip in $(seq 1 254); do
+        target_ip=$(echo $subnet | sed 's/\/24//').$ip
+        echo "Verificando $target_ip..."
+        
+        # Verifica os compartilhamentos SMB abertos
+        smbclient -L "\\$target_ip" -U guest% 2>/dev/null
+    done
+done < lista_subredes.txt
+
 
 ----
 rpc
