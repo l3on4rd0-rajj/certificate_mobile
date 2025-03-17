@@ -1,316 +1,124 @@
-Cenário de Automação da Modelagem de Ameaças
-1. Definição do Fluxo de Trabalho
-O fluxo de trabalho será dividido em etapas que ocorrem automaticamente sempre que houver uma nova alteração no código ou uma nova versão do sistema. O Jenkins será o orquestrador, e o IriusRisk será responsável pela modelagem e análise de ameaças.
+Descrição do Fluxo
+Bitbucket (CI/CD Pipeline):
 
-2. Etapas Detalhadas
-Etapa 1: Configuração do Ambiente
-Jenkins:
+O código-fonte é enviado para o repositório no Bitbucket.
 
-Instale e configure o Jenkins em um servidor.
+O pipeline de CI/CD é acionado, iniciando o processo de build.
 
-Instale plugins necessários, como o Pipeline, Git, e HTTP Request (para chamadas à API do IriusRisk).
+Durante o build, uma ferramenta de geração de SBOM (como Syft, Dependency-Track, ou OWASP Dependency-Check) é usada para criar o SBOM.
 
-Configure credenciais no Jenkins para acessar a API do IriusRisk (por exemplo, um token de API).
+O SBOM é gerado em um formato padrão (SPDX, CycloneDX, etc.).
 
-IriusRisk:
+JFrog Artifactory:
 
-Certifique-se de que o IriusRisk esteja configurado e acessível via API.
+O SBOM e os artefatos do build (binários, bibliotecas, etc.) são enviados para o JFrog Artifactory.
 
-Crie um template de modelo de ameaças no IriusRisk que será usado como base para novos projetos.
+O Artifactory armazena o SBOM junto com os artefatos, garantindo rastreabilidade.
 
-Etapa 2: Trigger do Pipeline
-O pipeline é acionado automaticamente quando:
+Sonatype Nexus:
 
-Um novo código é enviado para o repositório Git (por exemplo, um push para a branch main).
+O Nexus é usado como repositório de componentes de software.
 
-Uma nova versão do sistema é criada.
+Ele pode ser integrado ao pipeline para fornecer componentes confiáveis e validados.
 
-Um pull request é aberto ou atualizado.
+Sonatype Lifecycle:
 
-Etapa 3: Criação do Projeto no IriusRisk
-O Jenkins executa um script (por exemplo, em Python, Shell ou Groovy) para criar um novo projeto no IriusRisk.
+O SBOM é enviado para o Sonatype Lifecycle para análise de vulnerabilidades.
 
-O script faz uma chamada à API do IriusRisk para criar o projeto, passando informações como:
+O Lifecycle verifica os componentes listados no SBOM contra bancos de dados de vulnerabilidades (como o NVD).
 
-Nome do projeto.
+Ele gera um relatório de riscos, indicando vulnerabilidades críticas, altas, médias e baixas.
 
-Versão do sistema.
+Aprovação/Rejeição:
 
-Descrição do projeto.
+Com base no relatório do Sonatype Lifecycle, o pipeline pode aprovar ou rejeitar o build.
 
-Template de modelo de ameaças a ser utilizado.
+Se houver vulnerabilidades críticas, o build pode ser bloqueado até que as issues sejam resolvidas.
 
-Exemplo de chamada à API:
+Notificação de Risco:
 
-bash
-Copy
-POST /api/v1/projects
-Body: {
-  "name": "Novo Projeto",
-  "version": "1.0",
-  "description": "Projeto de exemplo",
-  "template": "TemplatePadrao"
-}
-Etapa 4: Importação de Dados do Sistema
-O Jenkins coleta informações do sistema (por exemplo, arquivos de configuração, diagramas de arquitetura, ou dados de componentes) e os envia para o IriusRisk.
+O Sonatype Lifecycle notifica a equipe de segurança ou desenvolvimento sobre os riscos encontrados.
 
-Esses dados são usados para preencher automaticamente o modelo de ameaças com:
+As notificações podem ser enviadas por e-mail, Slack, ou integradas ao JIRA.
 
-Componentes do sistema.
+Integração Contínua:
 
-Fluxos de dados.
+O pipeline de CI/CD continua com a implantação do artefato seguro em ambientes de staging ou produção.
 
-Requisitos de segurança.
+O SBOM é armazenado para auditoria e conformidade.
 
-Exemplo de chamada à API para importar dados:
+Ferramentas e Integrações
+Bitbucket:
 
-bash
-Copy
-POST /api/v1/projects/{projectId}/components
-Body: {
-  "components": [
-    {
-      "name": "Serviço de Autenticação",
-      "type": "Web Service",
-      "description": "Responsável pela autenticação de usuários"
-    }
-  ]
-}
-Etapa 5: Execução da Análise de Ameaças
-O Jenkins dispara a análise de ameaças no IriusRisk.
+Pipeline de CI/CD.
 
-O IriusRisk utiliza o modelo criado para identificar ameaças, vulnerabilidades e riscos associados ao sistema.
+Integração com ferramentas de geração de SBOM (Syft, Dependency-Track, etc.).
 
-Exemplo de chamada à API para iniciar a análise:
+JFrog Artifactory:
 
-bash
-Copy
-POST /api/v1/projects/{projectId}/analyses
-Body: {
-  "type": "Threat Analysis"
-}
-Etapa 6: Coleta de Resultados
-Após a análise, o Jenkins coleta os resultados da modelagem de ameaças.
+Armazenamento de artefatos e SBOMs.
 
-Os resultados podem incluir:
+Integração com ferramentas de análise de segurança.
 
-Lista de ameaças identificadas.
+Sonatype Nexus:
 
-Recomendações de mitigação.
+Repositório de componentes de software.
 
-Nível de risco do projeto.
+Fornece componentes validados e seguros.
 
-Exemplo de chamada à API para obter resultados:
+Sonatype Lifecycle:
 
-bash
-Copy
-GET /api/v1/projects/{projectId}/risks
-Etapa 7: Geração de Relatórios
-O Jenkins gera relatórios de segurança a partir dos resultados coletados.
+Análise de vulnerabilidades no SBOM.
 
-Os relatórios podem ser:
-
-Salvos como artefatos do build no Jenkins.
-
-Enviados por e-mail para a equipe de segurança e desenvolvimento.
-
-Publicados em ferramentas de monitoramento, como dashboards do Kibana ou Grafana.
-
-Etapa 8: Validação de Segurança no Pipeline
-O Jenkins valida se o sistema atende aos critérios de segurança definidos no IriusRisk.
-
-Se o nível de risco estiver dentro dos limites aceitáveis, o pipeline continua para as próximas etapas (por exemplo, testes e deploy).
-
-Se o nível de risco for alto, o pipeline é interrompido, e a equipe é notificada para corrigir as vulnerabilidades antes de prosseguir.
-
-Etapa 9: Notificações
-O Jenkins envia notificações automáticas para a equipe:
-
-Sucesso: O modelo de ameaças foi criado e aprovado.
-
-Falha: O modelo de ameaças identificou riscos críticos que precisam ser resolvidos.
-
-As notificações podem ser enviadas por:
-
-E-mail.
-
-Slack.
-
-Microsoft Teams.
-
-Etapa 10: Monitoramento Contínuo
-O Jenkins monitora continuamente o pipeline e os resultados da modelagem de ameaças.
-
-Dashboards são atualizados com métricas de segurança, como:
-
-Número de ameaças identificadas.
-
-Nível de risco médio dos projetos.
-
-Tempo médio para correção de vulnerabilidades.
-
-Exemplo de Pipeline no Jenkins
-Aqui está um exemplo de como o pipeline pode ser configurado no Jenkins:
-
-groovy
-Copy
-pipeline {
-    agent any
-    stages {
-        stage('Criar Projeto no IriusRisk') {
-            steps {
-                script {
-                    def projectId = sh(script: "python criar_projeto_iriusrisk.py", returnStdout: true).trim()
-                    env.PROJECT_ID = projectId
-                }
-            }
-        }
-        stage('Importar Dados do Sistema') {
-            steps {
-                sh "python importar_dados_iriusrisk.py ${env.PROJECT_ID}"
-            }
-        }
-        stage('Executar Análise de Ameaças') {
-            steps {
-                sh "python executar_analise_iriusrisk.py ${env.PROJECT_ID}"
-            }
-        }
-        stage('Coletar Resultados') {
-            steps {
-                sh "python coletar_resultados_iriusrisk.py ${env.PROJECT_ID}"
-            }
-        }
-        stage('Validar Segurança') {
-            steps {
-                sh "python validar_seguranca_iriusrisk.py ${env.PROJECT_ID}"
-            }
-        }
-        stage('Notificar Equipe') {
-            steps {
-                sh "python notificar_equipe.py ${env.PROJECT_ID}"
-            }
-        }
-    }
-    post {
-        success {
-            echo "Pipeline concluído com sucesso!"
-        }
-        failure {
-            echo "Pipeline falhou. Verifique os logs para mais detalhes."
-        }
-    }
-}
-Conclusão
-Esse cenário automatizado garante que a modelagem de ameaças seja uma parte contínua e integrada do processo de desenvolvimento. Ao utilizar o Jenkins e o IriusRisk juntos, você pode:
-
-Reduzir o tempo necessário para criar modelos de ameaças.
-
-Identificar e mitigar riscos de segurança mais cedo no ciclo de vida do desenvolvimento.
-
-Garantir que a segurança seja uma prioridade em todos os estágios do pipeline.
+Geração de relatórios de risco.
 
 
+----
 
----
-
-
-<mxfile host="app.diagrams.net">
-  <diagram name="Page-1" id="your-diagram-id">
+<mxfile>
+  <diagram name="SBOM Implementation Flow" id="abc123">
     <mxGraphModel dx="1000" dy="1000" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="827" pageHeight="1169" math="0" shadow="0">
       <root>
         <mxCell id="0" />
         <mxCell id="1" parent="0" />
-        <!-- Início do Fluxograma -->
-        <mxCell id="2" value="Trigger do Pipeline" style="rounded=1;whiteSpace=wrap;html=1;" vertex="1" parent="1">
-          <mxGeometry x="160" y="40" width="120" height="60" as="geometry" />
+        
+        <!-- Etapas do Fluxo -->
+        <mxCell id="2" value="1. Bitbucket (CI/CD Pipeline)&#10;- Código-fonte é enviado ao repositório.&#10;- Pipeline de CI/CD é acionado.&#10;- SBOM é gerado durante o build." style="rounded=1;whiteSpace=wrap;html=1;" vertex="1" parent="1">
+          <mxGeometry x="40" y="120" width="200" height="100" as="geometry" />
         </mxCell>
-        <mxCell id="note2" value="O pipeline é acionado automaticamente quando há uma nova alteração no código (push para o repositório Git) ou uma nova versão do sistema." style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=top;spacingLeft=4;spacingRight=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;" vertex="1" parent="1">
-          <mxGeometry x="300" y="50" width="200" height="40" as="geometry" />
+        <mxCell id="3" value="2. JFrog Artifactory&#10;- SBOM e artefatos são armazenados.&#10;- Garante rastreabilidade dos componentes." style="rounded=1;whiteSpace=wrap;html=1;" vertex="1" parent="1">
+          <mxGeometry x="320" y="120" width="200" height="100" as="geometry" />
         </mxCell>
-        <mxCell id="3" value="Criar Projeto no IriusRisk" style="rounded=1;whiteSpace=wrap;html=1;" vertex="1" parent="1">
-          <mxGeometry x="160" y="140" width="120" height="60" as="geometry" />
+        <mxCell id="4" value="3. Sonatype Nexus&#10;- Repositório de componentes.&#10;- Fornece componentes validados e seguros." style="rounded=1;whiteSpace=wrap;html=1;" vertex="1" parent="1">
+          <mxGeometry x="600" y="120" width="200" height="100" as="geometry" />
         </mxCell>
-        <mxCell id="note3" value="O Jenkins faz uma chamada à API do IriusRisk para criar um novo projeto, utilizando um template pré-configurado de modelo de ameaças." style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=top;spacingLeft=4;spacingRight=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;" vertex="1" parent="1">
-          <mxGeometry x="300" y="150" width="200" height="40" as="geometry" />
+        <mxCell id="5" value="4. Sonatype Lifecycle&#10;- Análise de vulnerabilidades no SBOM.&#10;- Gera relatório de riscos.&#10;- Notifica equipe sobre problemas." style="rounded=1;whiteSpace=wrap;html=1;" vertex="1" parent="1">
+          <mxGeometry x="880" y="120" width="200" height="120" as="geometry" />
         </mxCell>
-        <mxCell id="4" value="Importar Dados do Sistema" style="rounded=1;whiteSpace=wrap;html=1;" vertex="1" parent="1">
-          <mxGeometry x="160" y="240" width="120" height="60" as="geometry" />
+        
+        <!-- Setas e Conectores -->
+        <mxCell id="6" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" edge="1" parent="1" source="2" target="3">
+          <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="note4" value="Dados do sistema (componentes, fluxos de dados, requisitos de segurança) são importados para o IriusRisk via API, preenchendo automaticamente o modelo de ameaças." style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=top;spacingLeft=4;spacingRight=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;" vertex="1" parent="1">
-          <mxGeometry x="300" y="250" width="200" height="40" as="geometry" />
+        <mxCell id="7" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" edge="1" parent="1" source="3" target="4">
+          <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="5" value="Executar Análise de Ameaças" style="rounded=1;whiteSpace=wrap;html=1;" vertex="1" parent="1">
-          <mxGeometry x="160" y="340" width="120" height="60" as="geometry" />
+        <mxCell id="8" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" edge="1" parent="1" source="4" target="5">
+          <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="note5" value="O IriusRisk executa uma análise automatizada para identificar ameaças, vulnerabilidades e riscos associados ao sistema." style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=top;spacingLeft=4;spacingRight=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;" vertex="1" parent="1">
-          <mxGeometry x="300" y="350" width="200" height="40" as="geometry" />
+        
+        <!-- Descrições das Etapas -->
+        <mxCell id="9" value="1. Código-fonte é enviado ao repositório.&#10;2. Pipeline de CI/CD é acionado.&#10;3. SBOM é gerado durante o build." style="text;html=1;align=left;verticalAlign=middle;resizable=0;points=[];" vertex="1" parent="1">
+          <mxGeometry x="40" y="240" width="200" height="60" as="geometry" />
         </mxCell>
-        <mxCell id="6" value="Coletar Resultados" style="rounded=1;whiteSpace=wrap;html=1;" vertex="1" parent="1">
-          <mxGeometry x="160" y="440" width="120" height="60" as="geometry" />
+        <mxCell id="10" value="1. SBOM e artefatos são armazenados.&#10;2. Garante rastreabilidade dos componentes." style="text;html=1;align=left;verticalAlign=middle;resizable=0;points=[];" vertex="1" parent="1">
+          <mxGeometry x="320" y="240" width="200" height="60" as="geometry" />
         </mxCell>
-        <mxCell id="note6" value="Os resultados da análise são coletados via API, incluindo lista de ameaças, recomendações de mitigação e nível de risco do projeto." style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=top;spacingLeft=4;spacingRight=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;" vertex="1" parent="1">
-          <mxGeometry x="300" y="450" width="200" height="40" as="geometry" />
+        <mxCell id="11" value="1. Repositório de componentes.&#10;2. Fornece componentes validados e seguros." style="text;html=1;align=left;verticalAlign=middle;resizable=0;points=[];" vertex="1" parent="1">
+          <mxGeometry x="600" y="240" width="200" height="60" as="geometry" />
         </mxCell>
-        <mxCell id="7" value="Validar Segurança" style="rounded=1;whiteSpace=wrap;html=1;" vertex="1" parent="1">
-          <mxGeometry x="160" y="540" width="120" height="60" as="geometry" />
-        </mxCell>
-        <mxCell id="note7" value="O Jenkins valida se o sistema atende aos critérios de segurança. Se o risco for alto, o pipeline é interrompido para correções." style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=top;spacingLeft=4;spacingRight=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;" vertex="1" parent="1">
-          <mxGeometry x="300" y="550" width="200" height="40" as="geometry" />
-        </mxCell>
-        <mxCell id="8" value="Notificar Equipe" style="rounded=1;whiteSpace=wrap;html=1;" vertex="1" parent="1">
-          <mxGeometry x="160" y="640" width="120" height="60" as="geometry" />
-        </mxCell>
-        <mxCell id="note8" value="Notificações são enviadas para a equipe (por e-mail, Slack, etc.) com os resultados da análise e o status do pipeline." style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=top;spacingLeft=4;spacingRight=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;" vertex="1" parent="1">
-          <mxGeometry x="300" y="650" width="200" height="40" as="geometry" />
-        </mxCell>
-        <mxCell id="9" value="Pipeline Concluído" style="rounded=1;whiteSpace=wrap;html=1;" vertex="1" parent="1">
-          <mxGeometry x="160" y="740" width="120" height="60" as="geometry" />
-        </mxCell>
-        <mxCell id="note9" value="O pipeline é concluído com sucesso, e o sistema está pronto para a próxima etapa (testes, deploy, etc.)." style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=top;spacingLeft=4;spacingRight=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;" vertex="1" parent="1">
-          <mxGeometry x="300" y="750" width="200" height="40" as="geometry" />
-        </mxCell>
-        <!-- Conexões entre as etapas -->
-        <mxCell id="10" value="" style="endArrow=classic;html=1;" edge="1" parent="1" source="2" target="3">
-          <mxGeometry width="50" height="50" relative="1" as="geometry">
-            <mxPoint x="220" y="100" as="sourcePoint" />
-            <mxPoint x="220" y="140" as="targetPoint" />
-          </mxGeometry>
-        </mxCell>
-        <mxCell id="11" value="" style="endArrow=classic;html=1;" edge="1" parent="1" source="3" target="4">
-          <mxGeometry width="50" height="50" relative="1" as="geometry">
-            <mxPoint x="220" y="200" as="sourcePoint" />
-            <mxPoint x="220" y="240" as="targetPoint" />
-          </mxGeometry>
-        </mxCell>
-        <mxCell id="12" value="" style="endArrow=classic;html=1;" edge="1" parent="1" source="4" target="5">
-          <mxGeometry width="50" height="50" relative="1" as="geometry">
-            <mxPoint x="220" y="300" as="sourcePoint" />
-            <mxPoint x="220" y="340" as="targetPoint" />
-          </mxGeometry>
-        </mxCell>
-        <mxCell id="13" value="" style="endArrow=classic;html=1;" edge="1" parent="1" source="5" target="6">
-          <mxGeometry width="50" height="50" relative="1" as="geometry">
-            <mxPoint x="220" y="400" as="sourcePoint" />
-            <mxPoint x="220" y="440" as="targetPoint" />
-          </mxGeometry>
-        </mxCell>
-        <mxCell id="14" value="" style="endArrow=classic;html=1;" edge="1" parent="1" source="6" target="7">
-          <mxGeometry width="50" height="50" relative="1" as="geometry">
-            <mxPoint x="220" y="500" as="sourcePoint" />
-            <mxPoint x="220" y="540" as="targetPoint" />
-          </mxGeometry>
-        </mxCell>
-        <mxCell id="15" value="" style="endArrow=classic;html=1;" edge="1" parent="1" source="7" target="8">
-          <mxGeometry width="50" height="50" relative="1" as="geometry">
-            <mxPoint x="220" y="600" as="sourcePoint" />
-            <mxPoint x="220" y="640" as="targetPoint" />
-          </mxGeometry>
-        </mxCell>
-        <mxCell id="16" value="" style="endArrow=classic;html=1;" edge="1" parent="1" source="8" target="9">
-          <mxGeometry width="50" height="50" relative="1" as="geometry">
-            <mxPoint x="220" y="700" as="sourcePoint" />
-            <mxPoint x="220" y="740" as="targetPoint" />
-          </mxGeometry>
+        <mxCell id="12" value="1. Análise de vulnerabilidades no SBOM.&#10;2. Gera relatório de riscos.&#10;3. Notifica equipe sobre problemas." style="text;html=1;align=left;verticalAlign=middle;resizable=0;points=[];" vertex="1" parent="1">
+          <mxGeometry x="880" y="260" width="200" height="80" as="geometry" />
         </mxCell>
       </root>
     </mxGraphModel>
