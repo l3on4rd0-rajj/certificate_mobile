@@ -15,8 +15,8 @@ def escolher_local_salvamento():
 
 # Caminhos dos arquivos (ajuste conforme necessário)
 caminho_base = os.getcwd()  # Usa o diretório atual do projeto
-arquivo1 = os.path.join(caminho_base, 'planilha1.csv')  # Substitua pelo nome real do arquivo
-arquivo2 = os.path.join(caminho_base, 'planilha2.csv')  # Substitua pelo nome real do arquivo
+arquivo1 = os.path.join(caminho_base, r'C:\Users\Leonardo Vargas\PycharmProjects\comparador\pythonProject1\arquivo1 - Página1.csv')  # Substitua pelo nome real do arquivo
+arquivo2 = os.path.join(caminho_base, r'C:\Users\Leonardo Vargas\PycharmProjects\comparador\pythonProject1\arquivo2 - Página1.csv')  # Substitua pelo nome real do arquivo
 
 # Verificar se os arquivos existem
 if not os.path.exists(arquivo1):
@@ -26,20 +26,12 @@ elif not os.path.exists(arquivo2):
 else:
     try:
         # Carregar os arquivos CSV
-        df1 = pd.read_csv(arquivo1)  # CSV 1: Product, MS
-        df2 = pd.read_csv(arquivo2)  # CSV 2: Project Name, Latest Version ID
+        df1 = pd.read_csv(arquivo1)
+        df2 = pd.read_csv(arquivo2)
 
-        # Inspecionar os dados
-        print("Primeiras linhas de planilha1.csv:")
-        print(df1.head())
-        print("\nPrimeiras linhas de planilha2.csv:")
-        print(df2.head())
-
-        # Verificar se as colunas estão corretas
-        if 'MS' not in df1.columns:
-            raise ValueError(f"O arquivo {arquivo1} deve ter uma coluna chamada 'MS'.")
-        if 'Project Name' not in df2.columns:
-            raise ValueError(f"O arquivo {arquivo2} deve ter uma coluna chamada 'Project Name'.")
+        # Renomear as colunas para facilitar a manipulação
+        df1.columns = ['Projeto', 'MS']
+        df2.columns = ['Project Name', 'Latest Version ID']
 
         # Criar uma nova coluna 'Status' no df1 com valor padrão 'nok'
         df1['Status'] = 'nok'
