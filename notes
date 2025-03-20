@@ -14,9 +14,8 @@ def escolher_local_salvamento():
     return caminho
 
 # Caminhos dos arquivos (ajuste conforme necessário)
-caminho_base = os.getcwd()  # Usa o diretório atual do projeto
-arquivo1 = os.path.join(caminho_base, 'planilha1.csv')  # Substitua pelo nome real do arquivo
-arquivo2 = os.path.join(caminho_base, 'planilha2.csv')  # Substitua pelo nome real do arquivo
+arquivo1 = r'C:\Users\Leonardo Vargas\PycharmProjects\comparador\pythonProject1\arquivo1.csv'  # Caminho completo do arquivo 1
+arquivo2 = r'C:\Users\Leonardo Vargas\PycharmProjects\comparador\pythonProject1\arquivo2.csv'  # Caminho completo do arquivo 2
 
 # Verificar se os arquivos existem
 if not os.path.exists(arquivo1):
@@ -25,9 +24,9 @@ elif not os.path.exists(arquivo2):
     print(f"Erro: O arquivo {arquivo2} não foi encontrado.")
 else:
     try:
-        # Carregar os arquivos CSV
-        df1 = pd.read_csv(arquivo1)  # CSV 1: Product, MS
-        df2 = pd.read_csv(arquivo2)  # CSV 2: Project Name, Latest Version ID
+        # Carregar os arquivos CSV com delimitador ';'
+        df1 = pd.read_csv(arquivo1, delimiter=';')  # CSV 1: Product, MS
+        df2 = pd.read_csv(arquivo2, delimiter=';')  # CSV 2: Project Name, Latest Version ID
 
         # Padroniza os nomes das colunas
         df1.columns = df1.columns.str.strip().str.lower()
@@ -58,7 +57,7 @@ else:
 
         if caminho_saida:  # Se o usuário escolher um local
             # Salvar o resultado em um novo arquivo CSV
-            df1.to_csv(caminho_saida, index=False)
+            df1.to_csv(caminho_saida, index=False, sep=';')  # Usa ';' como delimitador
             print(f"Arquivo salvo com sucesso em: {caminho_saida}")
         else:
             print("Operação cancelada pelo usuário.")
