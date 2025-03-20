@@ -26,12 +26,20 @@ elif not os.path.exists(arquivo2):
 else:
     try:
         # Carregar os arquivos CSV
-        df1 = pd.read_csv(arquivo1)
-        df2 = pd.read_csv(arquivo2)
+        df1 = pd.read_csv(arquivo1)  # CSV 1: Product, MS
+        df2 = pd.read_csv(arquivo2)  # CSV 2: Project Name, Latest Version ID
 
-        # Renomear as colunas para facilitar a manipulação
-        df1.columns = ['Projeto', 'MS']
-        df2.columns = ['Project Name', 'Latest Version ID']
+        # Inspecionar os dados
+        print("Primeiras linhas de planilha1.csv:")
+        print(df1.head())
+        print("\nPrimeiras linhas de planilha2.csv:")
+        print(df2.head())
+
+        # Verificar se as colunas estão corretas
+        if 'MS' not in df1.columns:
+            raise ValueError(f"O arquivo {arquivo1} deve ter uma coluna chamada 'MS'.")
+        if 'Project Name' not in df2.columns:
+            raise ValueError(f"O arquivo {arquivo2} deve ter uma coluna chamada 'Project Name'.")
 
         # Criar uma nova coluna 'Status' no df1 com valor padrão 'nok'
         df1['Status'] = 'nok'
