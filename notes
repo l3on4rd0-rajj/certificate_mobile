@@ -29,23 +29,29 @@ else:
         df1 = pd.read_csv(arquivo1)  # CSV 1: Product, MS
         df2 = pd.read_csv(arquivo2)  # CSV 2: Project Name, Latest Version ID
 
+        # Padroniza os nomes das colunas
+        df1.columns = df1.columns.str.strip().str.lower()
+        df2.columns = df2.columns.str.strip().str.lower()
+
         # Inspecionar os dados
-        print("Primeiras linhas de planilha1.csv:")
+        print("Colunas do Arquivo 1:", df1.columns.tolist())
+        print("Colunas do Arquivo 2:", df2.columns.tolist())
+        print("\nPrimeiras linhas de planilha1.csv:")
         print(df1.head())
         print("\nPrimeiras linhas de planilha2.csv:")
         print(df2.head())
 
         # Verificar se as colunas estão corretas
-        if 'MS' not in df1.columns:
-            raise ValueError(f"O arquivo {arquivo1} deve ter uma coluna chamada 'MS'.")
-        if 'Project Name' not in df2.columns:
-            raise ValueError(f"O arquivo {arquivo2} deve ter uma coluna chamada 'Project Name'.")
+        if 'ms' not in df1.columns:
+            raise ValueError(f"O arquivo {arquivo1} deve ter uma coluna chamada 'ms'.")
+        if 'project name' not in df2.columns:
+            raise ValueError(f"O arquivo {arquivo2} deve ter uma coluna chamada 'project name'.")
 
         # Criar uma nova coluna 'Status' no df1 com valor padrão 'nok'
-        df1['Status'] = 'nok'
+        df1['status'] = 'nok'
 
-        # Verificar se os valores de 'MS' em df1 estão em 'Project Name' em df2
-        df1.loc[df1['MS'].isin(df2['Project Name']), 'Status'] = 'ok'
+        # Verificar se os valores de 'ms' em df1 estão em 'project name' em df2
+        df1.loc[df1['ms'].isin(df2['project name']), 'status'] = 'ok'
 
         # Perguntar onde salvar o arquivo de saída
         caminho_saida = escolher_local_salvamento()
