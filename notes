@@ -1,9 +1,9 @@
 import pandas as pd
 import os
+from tkinter import Tk, filedialog
 
 # Função para selecionar o local de salvamento do arquivo
 def escolher_local_salvamento():
-    from tkinter import Tk, filedialog
     root = Tk()
     root.withdraw()  # Esconde a janela principal do tkinter
     caminho = filedialog.asksaveasfilename(
@@ -13,29 +13,40 @@ def escolher_local_salvamento():
     )
     return caminho
 
-# Carregar os arquivos Excel
-arquivo1 = 'planilha1.xlsx'  # Substitua pelo caminho do primeiro arquivo
-arquivo2 = 'planilha2.xlsx'  # Substitua pelo caminho do segundo arquivo
+# Caminhos dos arquivos (ajuste conforme necessário)
+caminho_base = r'C:\Users\x720271\OneDrive - Santander Office 365\Área de Trabalho\esteira\fortify-ok-nok'
+arquivo1 = os.path.join(caminho_base, 'planilha1.xlsx')  # Substitua pelo nome real do arquivo
+arquivo2 = os.path.join(caminho_base, 'planilha2.xlsx')  # Substitua pelo nome real do arquivo
 
-df1 = pd.read_excel(arquivo1)
-df2 = pd.read_excel(arquivo2)
-
-# Renomear as colunas para facilitar a manipulação
-df1.columns = ['Projeto', 'MS']
-df2.columns = ['Project Name', 'Latest Version ID']
-
-# Criar uma nova coluna 'Status' no df1 com valor padrão 'nok'
-df1['Status'] = 'nok'
-
-# Verificar se os valores de 'MS' em df1 estão em 'Project Name' em df2
-df1.loc[df1['MS'].isin(df2['Project Name']), 'Status'] = 'ok'
-
-# Perguntar onde salvar o arquivo de saída
-caminho_saida = escolher_local_salvamento()
-
-if caminho_saida:  # Se o usuário escolher um local
-    # Salvar o resultado em um novo arquivo Excel
-    df1.to_excel(caminho_saida, index=False)
-    print(f"Arquivo salvo com sucesso em: {caminho_saida}")
+# Verificar se os arquivos existem
+if not os.path.exists(arquivo1):
+    print(f"Erro: O arquivo {arquivo1} não foi encontrado.")
+elif not os.path.exists(arquivo2):
+    print(f"Erro: O arquivo {arquivo2} não foi encontrado.")
 else:
-    print("Operação cancelada pelo usuário.")
+    try:
+        # Carregar os arquivos Excel com engine especificado
+        df1 = pd.read_excel(arquivo1, engine='openpyxl')  # Use 'xlrd' para .xls
+        df2 = pd.read_excel(arquivo2, engine='openpyxl')  # Use 'xlrd' para .xls
+
+        # Renomear as colunas para facilitar a manipulação
+        df1.columns = ['Projeto', 'MS']
+        df2.columns = ['Project Name', 'Latest Version ID']
+
+        # Criar uma nova coluna 'Status' no df1 com valor padrão 'nok'
+        df1['Status'] = 'nok'
+
+        # Verificar se os valores de 'MS' em df1 estão em 'Project Name' em df2
+        df1.loc[df1['MS'].isin(df2['Project Name']), 'Status'] = 'ok'
+
+        # Perguntar onde salvar o arquivo de saída
+        caminho_saida = escolher_local_salvamento()
+
+        if caminho_saida:  # Se o usuário escolher um local
+            # Salvar o resultado em um novo arquivo Excel
+            df1.to_excel(caminho_saida, index=False)
+            print(f"Arquivo salvo com sucesso em: {caminho_saida}")
+        else:
+            print("Operação cancelada pelo usuário.")
+    except Exception as e:
+        print(f"Erro ao processar os arquivos: {e}")
