@@ -1,126 +1,20 @@
-Descrição do Fluxo
-Bitbucket (CI/CD Pipeline):
+import pandas as pd
 
-O código-fonte é enviado para o repositório no Bitbucket.
+# Carregar as planilhas
+df1 = pd.read_csv('planilha1.csv')  # Substitua pelo caminho da sua Planilha 1
+df2 = pd.read_csv('planilha2.csv')  # Substitua pelo caminho da sua Planilha 2
 
-O pipeline de CI/CD é acionado, iniciando o processo de build.
+# Renomear as colunas para facilitar a manipulação
+df1.columns = ['Projeto', 'MS', 'Fortify']
+df2.columns = ['Project Name', 'Latest Version']
 
-Durante o build, uma ferramenta de geração de SBOM (como Syft, Dependency-Track, ou OWASP Dependency-Check) é usada para criar o SBOM.
+# Criar uma nova coluna 'Status' no df1 com valor padrão 'nok'
+df1['Status'] = 'nok'
 
-O SBOM é gerado em um formato padrão (SPDX, CycloneDX, etc.).
+# Verificar se os valores de 'MS' em df1 estão em 'Project Name' em df2
+df1.loc[df1['MS'].isin(df2['Project Name']), 'Status'] = 'ok'
 
-JFrog Artifactory:
+# Salvar o resultado em um novo CSV
+df1.to_csv('resultado_final.csv', index=False)
 
-O SBOM e os artefatos do build (binários, bibliotecas, etc.) são enviados para o JFrog Artifactory.
-
-O Artifactory armazena o SBOM junto com os artefatos, garantindo rastreabilidade.
-
-Sonatype Nexus:
-
-O Nexus é usado como repositório de componentes de software.
-
-Ele pode ser integrado ao pipeline para fornecer componentes confiáveis e validados.
-
-Sonatype Lifecycle:
-
-O SBOM é enviado para o Sonatype Lifecycle para análise de vulnerabilidades.
-
-O Lifecycle verifica os componentes listados no SBOM contra bancos de dados de vulnerabilidades (como o NVD).
-
-Ele gera um relatório de riscos, indicando vulnerabilidades críticas, altas, médias e baixas.
-
-Aprovação/Rejeição:
-
-Com base no relatório do Sonatype Lifecycle, o pipeline pode aprovar ou rejeitar o build.
-
-Se houver vulnerabilidades críticas, o build pode ser bloqueado até que as issues sejam resolvidas.
-
-Notificação de Risco:
-
-O Sonatype Lifecycle notifica a equipe de segurança ou desenvolvimento sobre os riscos encontrados.
-
-As notificações podem ser enviadas por e-mail, Slack, ou integradas ao JIRA.
-
-Integração Contínua:
-
-O pipeline de CI/CD continua com a implantação do artefato seguro em ambientes de staging ou produção.
-
-O SBOM é armazenado para auditoria e conformidade.
-
-Ferramentas e Integrações
-Bitbucket:
-
-Pipeline de CI/CD.
-
-Integração com ferramentas de geração de SBOM (Syft, Dependency-Track, etc.).
-
-JFrog Artifactory:
-
-Armazenamento de artefatos e SBOMs.
-
-Integração com ferramentas de análise de segurança.
-
-Sonatype Nexus:
-
-Repositório de componentes de software.
-
-Fornece componentes validados e seguros.
-
-Sonatype Lifecycle:
-
-Análise de vulnerabilidades no SBOM.
-
-Geração de relatórios de risco.
-
-
-----
-
-<mxfile>
-  <diagram name="SBOM Implementation Flow" id="abc123">
-    <mxGraphModel dx="1000" dy="1000" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="827" pageHeight="1169" math="0" shadow="0">
-      <root>
-        <mxCell id="0" />
-        <mxCell id="1" parent="0" />
-        
-        <!-- Etapas do Fluxo -->
-        <mxCell id="2" value="1. Bitbucket (CI/CD Pipeline)&#10;- Código-fonte é enviado ao repositório.&#10;- Pipeline de CI/CD é acionado.&#10;- SBOM é gerado durante o build." style="rounded=1;whiteSpace=wrap;html=1;" vertex="1" parent="1">
-          <mxGeometry x="40" y="120" width="200" height="100" as="geometry" />
-        </mxCell>
-        <mxCell id="3" value="2. JFrog Artifactory&#10;- SBOM e artefatos são armazenados.&#10;- Garante rastreabilidade dos componentes." style="rounded=1;whiteSpace=wrap;html=1;" vertex="1" parent="1">
-          <mxGeometry x="320" y="120" width="200" height="100" as="geometry" />
-        </mxCell>
-        <mxCell id="4" value="3. Sonatype Nexus&#10;- Repositório de componentes.&#10;- Fornece componentes validados e seguros." style="rounded=1;whiteSpace=wrap;html=1;" vertex="1" parent="1">
-          <mxGeometry x="600" y="120" width="200" height="100" as="geometry" />
-        </mxCell>
-        <mxCell id="5" value="4. Sonatype Lifecycle&#10;- Análise de vulnerabilidades no SBOM.&#10;- Gera relatório de riscos.&#10;- Notifica equipe sobre problemas." style="rounded=1;whiteSpace=wrap;html=1;" vertex="1" parent="1">
-          <mxGeometry x="880" y="120" width="200" height="120" as="geometry" />
-        </mxCell>
-        
-        <!-- Setas e Conectores -->
-        <mxCell id="6" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" edge="1" parent="1" source="2" target="3">
-          <mxGeometry relative="1" as="geometry" />
-        </mxCell>
-        <mxCell id="7" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" edge="1" parent="1" source="3" target="4">
-          <mxGeometry relative="1" as="geometry" />
-        </mxCell>
-        <mxCell id="8" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" edge="1" parent="1" source="4" target="5">
-          <mxGeometry relative="1" as="geometry" />
-        </mxCell>
-        
-        <!-- Descrições das Etapas -->
-        <mxCell id="9" value="1. Código-fonte é enviado ao repositório.&#10;2. Pipeline de CI/CD é acionado.&#10;3. SBOM é gerado durante o build." style="text;html=1;align=left;verticalAlign=middle;resizable=0;points=[];" vertex="1" parent="1">
-          <mxGeometry x="40" y="240" width="200" height="60" as="geometry" />
-        </mxCell>
-        <mxCell id="10" value="1. SBOM e artefatos são armazenados.&#10;2. Garante rastreabilidade dos componentes." style="text;html=1;align=left;verticalAlign=middle;resizable=0;points=[];" vertex="1" parent="1">
-          <mxGeometry x="320" y="240" width="200" height="60" as="geometry" />
-        </mxCell>
-        <mxCell id="11" value="1. Repositório de componentes.&#10;2. Fornece componentes validados e seguros." style="text;html=1;align=left;verticalAlign=middle;resizable=0;points=[];" vertex="1" parent="1">
-          <mxGeometry x="600" y="240" width="200" height="60" as="geometry" />
-        </mxCell>
-        <mxCell id="12" value="1. Análise de vulnerabilidades no SBOM.&#10;2. Gera relatório de riscos.&#10;3. Notifica equipe sobre problemas." style="text;html=1;align=left;verticalAlign=middle;resizable=0;points=[];" vertex="1" parent="1">
-          <mxGeometry x="880" y="260" width="200" height="80" as="geometry" />
-        </mxCell>
-      </root>
-    </mxGraphModel>
-  </diagram>
-</mxfile>
+print("Processo concluído. O arquivo 'resultado_final.csv' foi gerado.")
