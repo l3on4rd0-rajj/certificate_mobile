@@ -7,16 +7,16 @@ def escolher_local_salvamento():
     root = Tk()
     root.withdraw()  # Esconde a janela principal do tkinter
     caminho = filedialog.asksaveasfilename(
-        defaultextension=".xlsx",
-        filetypes=[("Arquivos Excel", "*.xlsx"), ("Todos os arquivos", "*.*")],
+        defaultextension=".csv",
+        filetypes=[("Arquivos CSV", "*.csv"), ("Todos os arquivos", "*.*")],
         title="Salvar como"
     )
     return caminho
 
 # Caminhos dos arquivos (ajuste conforme necessário)
-caminho_base = r'C:\Users\x720271\OneDrive - Santander Office 365\Área de Trabalho\esteira\fortify-ok-nok'
-arquivo1 = os.path.join(caminho_base, 'planilha1.xlsx')  # Substitua pelo nome real do arquivo
-arquivo2 = os.path.join(caminho_base, 'planilha2.xlsx')  # Substitua pelo nome real do arquivo
+caminho_base = os.getcwd()  # Usa o diretório atual do projeto
+arquivo1 = os.path.join(caminho_base, 'planilha1.csv')  # Substitua pelo nome real do arquivo
+arquivo2 = os.path.join(caminho_base, 'planilha2.csv')  # Substitua pelo nome real do arquivo
 
 # Verificar se os arquivos existem
 if not os.path.exists(arquivo1):
@@ -25,9 +25,9 @@ elif not os.path.exists(arquivo2):
     print(f"Erro: O arquivo {arquivo2} não foi encontrado.")
 else:
     try:
-        # Carregar os arquivos Excel com engine especificado
-        df1 = pd.read_excel(arquivo1, engine='openpyxl')  # Use 'xlrd' para .xls
-        df2 = pd.read_excel(arquivo2, engine='openpyxl')  # Use 'xlrd' para .xls
+        # Carregar os arquivos CSV
+        df1 = pd.read_csv(arquivo1)
+        df2 = pd.read_csv(arquivo2)
 
         # Renomear as colunas para facilitar a manipulação
         df1.columns = ['Projeto', 'MS']
@@ -43,8 +43,8 @@ else:
         caminho_saida = escolher_local_salvamento()
 
         if caminho_saida:  # Se o usuário escolher um local
-            # Salvar o resultado em um novo arquivo Excel
-            df1.to_excel(caminho_saida, index=False)
+            # Salvar o resultado em um novo arquivo CSV
+            df1.to_csv(caminho_saida, index=False)
             print(f"Arquivo salvo com sucesso em: {caminho_saida}")
         else:
             print("Operação cancelada pelo usuário.")
