@@ -12,67 +12,77 @@ def escolher_local_salvamento():
     )
     return caminho
 
-# Caminhos dos arquivos (ajuste conforme necessário)
+# Configuração dos arquivos
 arquivo1 = r'C:\Users\Leonardo Vargas\PycharmProjects\comparador\pythonProject1\arquivo1.csv'
 arquivo2 = r'C:\Users\Leonardo Vargas\PycharmProjects\comparador\pythonProject1\arquivo2.csv'
 
 if not os.path.exists(arquivo1):
-    print(f"Erro: O arquivo {arquivo1} não foi encontrado.")
-elif not os.path.exists(arquivo2):
-    print(f"Erro: O arquivo {arquivo2} não foi encontrado.")
-else:
-    try:
-        # Carregar os arquivos
-        df1 = pd.read_csv(arquivo1, delimiter=';')
-        df2 = pd.read_csv(arquivo2, delimiter=';')
+    print(f"Erro: Arquivo {arquivo1} não encontrado.")
+    exit()
+if not os.path.exists(arquivo2):
+    print(f"Erro: Arquivo {arquivo2} não encontrado.")
+    exit()
 
-        # Padronizar nomes das colunas
-        df1.columns = df1.columns.str.strip().str.lower()
-        df2.columns = df2.columns.str.strip().str.lower()
+try:
+    # Carregar os arquivos
+    df1 = pd.read_csv(arquivo1, delimiter=';')
+    df2 = pd.read_csv(arquivo2, delimiter=';')
 
-        # Verificar colunas necessárias
-        required_columns = {'ms', 'product'}  # Adicione aqui todas as colunas obrigatórias
-        if not required_columns.issubset(df1.columns):
-            missing = required_columns - set(df1.columns)
-            raise ValueError(f"Arquivo {arquivo1} está faltando colunas: {missing}")
-        if 'project name' not in df2.columns:
-            raise ValueError(f"Arquivo {arquivo2} deve ter coluna 'project name'")
+    # Padronizar nomes das colunas
+    df1.columns = df1.columns.str.strip().str.lower()
+    df2.columns = df2.columns.str.strip().str.lower()
 
-        # Adicionar coluna de status
-        df1['status'] = 'nok'
-        df1.loc[df1['ms'].isin(df2['project name']), 'status'] = 'ok'
+    # Verificar colunas essenciais
+    coluna_projeto = 'product'  # Altere aqui se o nome for diferente
+    colunas_necessarias = [coluna_projeto, 'ms']
+    
+    for col in colunas_necessarias:
+        if col not in df1.columns:
+            raise ValueError(f"Coluna '{col}' não encontrada no arquivo1")
 
-        # Calcular estatísticas por projeto
-        stats = df1.groupby('product').agg(
-            total_ms=('ms', 'count'),
-            qtd_ok=('status', lambda x: (x == 'ok').sum()),
-            qtd_nok=('status', lambda x: (x == 'nok').sum())
-        ).reset_index()
-        
-        # Calcular porcentagens
-        stats['%_ok'] = (stats['qtd_ok'] / stats['total_ms'] * 100).round(2)
-        stats['%_nok'] = (stats['qtd_nok'] / stats['total_ms'] * 100).round(2)
+    if 'project name' not in df2.columns:
+        raise ValueError("Coluna 'project name' não encontrada no arquivo2")
 
-        # Juntar as estatísticas ao dataframe original
-        df_final = df1.merge(stats, on='product', how='left')
+    # 1. Adicionar coluna de status
+    df1['status'] = 'nok'
+    df1.loc[df1['ms'].isin(df2['project name']), 'status'] = 'ok'
 
-        # Ordenar colunas para melhor visualização
-        cols_order = ['product', 'ms', 'status', 'total_ms', 'qtd_ok', 'qtd_nok', '%_ok', '%_nok'] + \
-                     [col for col in df1.columns if col not in {'product', 'ms', 'status'}]
-        df_final = df_final[cols_order]
+    # 2. Calcular estatísticas por projeto
+    stats = df1.groupby(coluna_projeto).agg(
+        total_ms=('ms', 'count'),
+        qtd_ok=('status', lambda x: (x == 'ok').sum()),
+        qtd_nok=('status', lambda x: (x == 'nok').sum())
+    ).reset_index()
 
-        # Salvar o arquivo
-        caminho_saida = escolher_local_salvamento()
-        if caminho_saida:
-            df_final.to_csv(caminho_saida, index=False, sep=';')
-            print(f"Arquivo salvo em: {caminho_saida}")
-            print("\nVisualização das primeiras linhas:")
-            print(df_final.head())
-        else:
-            print("Operação cancelada.")
-    except Exception as e:
-        print(f"Erro: {str(e)}")
-        print("\nDica: Verifique se:")
-        print("- O delimitador dos arquivos CSV é realmente ';'")
-        print("- A coluna de projeto se chama 'product' (caso contrário, ajuste o código)")
-        print("- Não há linhas vazias ou formatos inconsistentes nos arquivos")
+    # 3. Calcular porcentagens
+    stats['%_ok'] = (stats['qtd_ok'] / stats['total_ms'] * 100).round(2)
+    stats['%_nok'] = (stats['qtd_nok'] / stats['total_ms'] * 100).round(2)
+
+    # 4. Juntar ao dataframe original
+    df_final = pd.merge(df1, stats, on=coluna_projeto, how='left')
+
+    # 5. Ordenar colunas (opcional)
+    colunas_ordenadas = [
+        coluna_projeto, 'ms', 'status', 
+        'total_ms', 'qtd_ok', 'qtd_nok', '%_ok', '%_nok'
+    ] + [col for col in df1.columns if col not in [coluna_projeto, 'ms', 'status']]
+    
+    df_final = df_final[colunas_ordenadas]
+
+    # 6. Salvar o resultado
+    caminho_saida = escolher_local_salvamento()
+    if caminho_saida:
+        df_final.to_csv(caminho_saida, index=False, sep=';')
+        print(f"Arquivo gerado com sucesso em: {caminho_saida}")
+        print("\nResumo das novas colunas adicionadas:")
+        print(df_final[[coluna_projeto, 'total_ms', 'qtd_ok', 'qtd_nok', '%_ok', '%_nok']].head())
+    else:
+        print("Operação cancelada pelo usuário.")
+
+except Exception as e:
+    print(f"Erro durante a execução: {str(e)}")
+    print("\nSolução de problemas:")
+    print("1. Verifique os nomes das colunas nos arquivos de entrada")
+    print("2. Confirme que o delimitador é ';'")
+    print("3. Verifique se há dados faltantes")
+    print("4. Caso persista, compartilhe um exemplo pequeno dos seus dados")
