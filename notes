@@ -12,77 +12,68 @@ def escolher_local_salvamento():
     )
     return caminho
 
-# Configuração dos arquivos
-arquivo1 = r'C:\Users\Leonardo Vargas\PycharmProjects\comparador\pythonProject1\arquivo1.csv'
-arquivo2 = r'C:\Users\Leonardo Vargas\PycharmProjects\comparador\pythonProject1\arquivo2.csv'
-
-if not os.path.exists(arquivo1):
-    print(f"Erro: Arquivo {arquivo1} não encontrado.")
-    exit()
-if not os.path.exists(arquivo2):
-    print(f"Erro: Arquivo {arquivo2} não encontrado.")
-    exit()
+# Configuração (ajuste esses nomes conforme seus arquivos)
+COLUNA_PROJETO = 'product'  # Coluna que identifica os projetos
+COLUNA_MS = 'ms'            # Coluna com os MS
+ARQUIVO1 = r'C:\Users\Leonardo Vargas\PycharmProjects\comparador\pythonProject1\arquivo1.csv'
+ARQUIVO2 = r'C:\Users\Leonardo Vargas\PycharmProjects\comparador\pythonProject1\arquivo2.csv'
 
 try:
-    # Carregar os arquivos
-    df1 = pd.read_csv(arquivo1, delimiter=';')
-    df2 = pd.read_csv(arquivo2, delimiter=';')
-
-    # Padronizar nomes das colunas
+    # 1. Carregar os arquivos
+    df1 = pd.read_csv(ARQUIVO1, delimiter=';')
+    df2 = pd.read_csv(ARQUIVO2, delimiter=';')
+    
+    # 2. Padronizar colunas
     df1.columns = df1.columns.str.strip().str.lower()
     df2.columns = df2.columns.str.strip().str.lower()
-
-    # Verificar colunas essenciais
-    coluna_projeto = 'product'  # Altere aqui se o nome for diferente
-    colunas_necessarias = [coluna_projeto, 'ms']
     
-    for col in colunas_necessarias:
+    # 3. Verificar colunas essenciais
+    for col in [COLUNA_PROJETO, COLUNA_MS]:
         if col not in df1.columns:
             raise ValueError(f"Coluna '{col}' não encontrada no arquivo1")
-
+    
     if 'project name' not in df2.columns:
         raise ValueError("Coluna 'project name' não encontrada no arquivo2")
 
-    # 1. Adicionar coluna de status
+    # 4. Calcular status (OK/NOK)
     df1['status'] = 'nok'
-    df1.loc[df1['ms'].isin(df2['project name']), 'status'] = 'ok'
+    df1.loc[df1[COLUNA_MS].isin(df2['project name']), 'status'] = 'ok'
 
-    # 2. Calcular estatísticas por projeto
-    stats = df1.groupby(coluna_projeto).agg(
-        total_ms=('ms', 'count'),
+    # 5. Calcular estatísticas por projeto
+    stats = df1.groupby(COLUNA_PROJETO).agg(
+        total_ms=(COLUNA_MS, 'count'),
         qtd_ok=('status', lambda x: (x == 'ok').sum()),
         qtd_nok=('status', lambda x: (x == 'nok').sum())
-    ).reset_index()
-
-    # 3. Calcular porcentagens
+    )
+    
+    # 6. Calcular porcentagens
     stats['%_ok'] = (stats['qtd_ok'] / stats['total_ms'] * 100).round(2)
     stats['%_nok'] = (stats['qtd_nok'] / stats['total_ms'] * 100).round(2)
+    
+    # 7. Juntar ao dataframe original (mantendo todas as linhas)
+    df_final = df1.join(stats, on=COLUNA_PROJETO, how='left')
 
-    # 4. Juntar ao dataframe original
-    df_final = pd.merge(df1, stats, on=coluna_projeto, how='left')
-
-    # 5. Ordenar colunas (opcional)
+    # 8. Ordenar colunas (opcional)
     colunas_ordenadas = [
-        coluna_projeto, 'ms', 'status', 
+        COLUNA_PROJETO, COLUNA_MS, 'status',
         'total_ms', 'qtd_ok', 'qtd_nok', '%_ok', '%_nok'
-    ] + [col for col in df1.columns if col not in [coluna_projeto, 'ms', 'status']]
+    ] + [col for col in df1.columns if col not in [COLUNA_PROJETO, COLUNA_MS, 'status']]
     
     df_final = df_final[colunas_ordenadas]
 
-    # 6. Salvar o resultado
+    # 9. Salvar resultado
     caminho_saida = escolher_local_salvamento()
     if caminho_saida:
         df_final.to_csv(caminho_saida, index=False, sep=';')
-        print(f"Arquivo gerado com sucesso em: {caminho_saida}")
-        print("\nResumo das novas colunas adicionadas:")
-        print(df_final[[coluna_projeto, 'total_ms', 'qtd_ok', 'qtd_nok', '%_ok', '%_nok']].head())
+        print(f"✅ Arquivo gerado com sucesso em: {caminho_saida}")
+        print("\n🔍 Amostra das novas colunas:")
+        print(df_final[[COLUNA_PROJETO, COLUNA_MS, 'status', 'total_ms', 'qtd_ok', 'qtd_nok', '%_ok', '%_nok']].head())
     else:
         print("Operação cancelada pelo usuário.")
 
 except Exception as e:
-    print(f"Erro durante a execução: {str(e)}")
-    print("\nSolução de problemas:")
-    print("1. Verifique os nomes das colunas nos arquivos de entrada")
-    print("2. Confirme que o delimitador é ';'")
-    print("3. Verifique se há dados faltantes")
-    print("4. Caso persista, compartilhe um exemplo pequeno dos seus dados")
+    print(f"❌ Erro: {str(e)}")
+    print("\n🔧 Dicas para correção:")
+    print(f"1. Verifique se a coluna de projeto se chama '{COLUNA_PROJETO}'")
+    print(f"2. Confirme se a coluna de MS se chama '{COLUNA_MS}'")
+    print("3. Verifique o delimitador dos arquivos")
