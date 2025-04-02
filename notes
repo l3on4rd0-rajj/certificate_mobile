@@ -2,10 +2,9 @@ import pandas as pd
 import os
 from tkinter import Tk, filedialog
 
-# Função para selecionar o local de salvamento do arquivo
 def escolher_local_salvamento():
     root = Tk()
-    root.withdraw()  # Esconde a janela principal do tkinter
+    root.withdraw()
     caminho = filedialog.asksaveasfilename(
         defaultextension=".csv",
         filetypes=[("Arquivos CSV", "*.csv"), ("Todos os arquivos", "*.*")],
@@ -13,74 +12,61 @@ def escolher_local_salvamento():
     )
     return caminho
 
-# Caminhos dos arquivos (ajuste conforme necessário)
-arquivo1 = r'C:\Users\Leonardo Vargas\PycharmProjects\comparador\pythonProject1\arquivo1.csv'  # Caminho completo do arquivo 1
-arquivo2 = r'C:\Users\Leonardo Vargas\PycharmProjects\comparador\pythonProject1\arquivo2.csv'  # Caminho completo do arquivo 2
+# Caminhos dos arquivos
+arquivo1 = r'C:\Users\Leonardo Vargas\PycharmProjects\comparador\pythonProject1\arquivo1.csv'
+arquivo2 = r'C:\Users\Leonardo Vargas\PycharmProjects\comparador\pythonProject1\arquivo2.csv'
 
-# Verificar se os arquivos existem
 if not os.path.exists(arquivo1):
     print(f"Erro: O arquivo {arquivo1} não foi encontrado.")
 elif not os.path.exists(arquivo2):
     print(f"Erro: O arquivo {arquivo2} não foi encontrado.")
 else:
     try:
-        # Carregar os arquivos CSV com delimitador ';'
-        df1 = pd.read_csv(arquivo1, delimiter=';')  # CSV 1: Product, MS
-        df2 = pd.read_csv(arquivo2, delimiter=';')  # CSV 2: Project Name, Latest Version ID
+        # Carregar os arquivos
+        df1 = pd.read_csv(arquivo1, delimiter=';')
+        df2 = pd.read_csv(arquivo2, delimiter=';')
 
-        # Padroniza os nomes das colunas
+        # Padronizar nomes das colunas
         df1.columns = df1.columns.str.strip().str.lower()
         df2.columns = df2.columns.str.strip().str.lower()
 
-        # Inspecionar os dados
-        print("Colunas do Arquivo 1:", df1.columns.tolist())
-        print("Colunas do Arquivo 2:", df2.columns.tolist())
-        print("\nPrimeiras linhas de planilha1.csv:")
-        print(df1.head())
-        print("\nPrimeiras linhas de planilha2.csv:")
-        print(df2.head())
-
-        # Verificar se as colunas estão corretas
+        # Verificar colunas necessárias
         if 'ms' not in df1.columns:
-            raise ValueError(f"O arquivo {arquivo1} deve ter uma coluna chamada 'ms'.")
+            raise ValueError(f"Arquivo {arquivo1} deve ter coluna 'ms'")
         if 'project name' not in df2.columns:
-            raise ValueError(f"O arquivo {arquivo2} deve ter uma coluna chamada 'project name'.")
+            raise ValueError(f"Arquivo {arquivo2} deve ter coluna 'project name'")
 
-        # Criar uma nova coluna 'Status' no df1 com valor padrão 'nok'
+        # Adicionar coluna de status
         df1['status'] = 'nok'
-
-        # Verificar se os valores de 'ms' em df1 estão em 'project name' em df2
         df1.loc[df1['ms'].isin(df2['project name']), 'status'] = 'ok'
 
-        # Calcular estatísticas por projeto (assumindo que 'product' é a coluna de projeto)
+        # Calcular estatísticas por projeto (assumindo coluna 'product')
         if 'product' in df1.columns:
-            # Criar dataframe com estatísticas por projeto
+            # Criar DataFrame com estatísticas
             stats = df1.groupby('product').agg(
                 total_ms=('ms', 'count'),
                 qtd_ok=('status', lambda x: (x == 'ok').sum()),
                 qtd_nok=('status', lambda x: (x == 'nok').sum())
-            )
+            ).reset_index()
             
             # Calcular porcentagens
             stats['%_ok'] = (stats['qtd_ok'] / stats['total_ms'] * 100).round(2)
             stats['%_nok'] = (stats['qtd_nok'] / stats['total_ms'] * 100).round(2)
             
-            # Resetar índice para merge
-            stats = stats.reset_index()
-            
-            # Adicionar colunas ao dataframe original
-            df1 = df1.merge(stats, on='product', how='left')
+            # Adicionar colunas ao DataFrame original
+            for col in ['total_ms', 'qtd_ok', 'qtd_nok', '%_ok', '%_nok']:
+                df1[col] = df1['product'].map(stats.set_index('product')[col])
         else:
-            print("Aviso: Coluna 'product' não encontrada. Não foi possível calcular estatísticas por projeto.")
+            print("Aviso: Coluna 'product' não encontrada. Estatísticas não calculadas.")
 
-        # Perguntar onde salvar o arquivo de saída
+        # Salvar o arquivo
         caminho_saida = escolher_local_salvamento()
-
-        if caminho_saida:  # Se o usuário escolher um local
-            # Salvar o resultado em um novo arquivo CSV
-            df1.to_csv(caminho_saida, index=False, sep=';')  # Usa ';' como delimitador
-            print(f"Arquivo salvo com sucesso em: {caminho_saida}")
+        if caminho_saida:
+            df1.to_csv(caminho_saida, index=False, sep=';')
+            print(f"Arquivo salvo em: {caminho_saida}")
+            print("\nVisualização das novas colunas:")
+            print(df1[['product', 'ms', 'status', 'total_ms', 'qtd_ok', 'qtd_nok', '%_ok', '%_nok']].head())
         else:
-            print("Operação cancelada pelo usuário.")
+            print("Operação cancelada.")
     except Exception as e:
-        print(f"Erro ao processar os arquivos: {e}")
+        print(f"Erro: {e}")
