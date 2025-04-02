@@ -12,7 +12,7 @@ def escolher_local_salvamento():
     )
     return caminho
 
-# Caminhos dos arquivos
+# Caminhos dos arquivos (ajuste conforme necessário)
 arquivo1 = r'C:\Users\Leonardo Vargas\PycharmProjects\comparador\pythonProject1\arquivo1.csv'
 arquivo2 = r'C:\Users\Leonardo Vargas\PycharmProjects\comparador\pythonProject1\arquivo2.csv'
 
@@ -31,8 +31,10 @@ else:
         df2.columns = df2.columns.str.strip().str.lower()
 
         # Verificar colunas necessárias
-        if 'ms' not in df1.columns:
-            raise ValueError(f"Arquivo {arquivo1} deve ter coluna 'ms'")
+        required_columns = {'ms', 'product'}  # Adicione aqui todas as colunas obrigatórias
+        if not required_columns.issubset(df1.columns):
+            missing = required_columns - set(df1.columns)
+            raise ValueError(f"Arquivo {arquivo1} está faltando colunas: {missing}")
         if 'project name' not in df2.columns:
             raise ValueError(f"Arquivo {arquivo2} deve ter coluna 'project name'")
 
@@ -40,33 +42,37 @@ else:
         df1['status'] = 'nok'
         df1.loc[df1['ms'].isin(df2['project name']), 'status'] = 'ok'
 
-        # Calcular estatísticas por projeto (assumindo coluna 'product')
-        if 'product' in df1.columns:
-            # Criar DataFrame com estatísticas
-            stats = df1.groupby('product').agg(
-                total_ms=('ms', 'count'),
-                qtd_ok=('status', lambda x: (x == 'ok').sum()),
-                qtd_nok=('status', lambda x: (x == 'nok').sum())
-            ).reset_index()
-            
-            # Calcular porcentagens
-            stats['%_ok'] = (stats['qtd_ok'] / stats['total_ms'] * 100).round(2)
-            stats['%_nok'] = (stats['qtd_nok'] / stats['total_ms'] * 100).round(2)
-            
-            # Adicionar colunas ao DataFrame original
-            for col in ['total_ms', 'qtd_ok', 'qtd_nok', '%_ok', '%_nok']:
-                df1[col] = df1['product'].map(stats.set_index('product')[col])
-        else:
-            print("Aviso: Coluna 'product' não encontrada. Estatísticas não calculadas.")
+        # Calcular estatísticas por projeto
+        stats = df1.groupby('product').agg(
+            total_ms=('ms', 'count'),
+            qtd_ok=('status', lambda x: (x == 'ok').sum()),
+            qtd_nok=('status', lambda x: (x == 'nok').sum())
+        ).reset_index()
+        
+        # Calcular porcentagens
+        stats['%_ok'] = (stats['qtd_ok'] / stats['total_ms'] * 100).round(2)
+        stats['%_nok'] = (stats['qtd_nok'] / stats['total_ms'] * 100).round(2)
+
+        # Juntar as estatísticas ao dataframe original
+        df_final = df1.merge(stats, on='product', how='left')
+
+        # Ordenar colunas para melhor visualização
+        cols_order = ['product', 'ms', 'status', 'total_ms', 'qtd_ok', 'qtd_nok', '%_ok', '%_nok'] + \
+                     [col for col in df1.columns if col not in {'product', 'ms', 'status'}]
+        df_final = df_final[cols_order]
 
         # Salvar o arquivo
         caminho_saida = escolher_local_salvamento()
         if caminho_saida:
-            df1.to_csv(caminho_saida, index=False, sep=';')
+            df_final.to_csv(caminho_saida, index=False, sep=';')
             print(f"Arquivo salvo em: {caminho_saida}")
-            print("\nVisualização das novas colunas:")
-            print(df1[['product', 'ms', 'status', 'total_ms', 'qtd_ok', 'qtd_nok', '%_ok', '%_nok']].head())
+            print("\nVisualização das primeiras linhas:")
+            print(df_final.head())
         else:
             print("Operação cancelada.")
     except Exception as e:
-        print(f"Erro: {e}")
+        print(f"Erro: {str(e)}")
+        print("\nDica: Verifique se:")
+        print("- O delimitador dos arquivos CSV é realmente ';'")
+        print("- A coluna de projeto se chama 'product' (caso contrário, ajuste o código)")
+        print("- Não há linhas vazias ou formatos inconsistentes nos arquivos")
