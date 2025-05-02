@@ -1,79 +1,66 @@
-import pandas as pd
-import os
-from tkinter import Tk, filedialog
+@echo off
+title Honeypot Log Generator
+color 0A
+setlocal enabledelayedexpansion
 
-def escolher_local_salvamento():
-    root = Tk()
-    root.withdraw()
-    caminho = filedialog.asksaveasfilename(
-        defaultextension=".csv",
-        filetypes=[("Arquivos CSV", "*.csv"), ("Todos os arquivos", "*.*")],
-        title="Salvar como"
+:: Configurações
+set LOG_FILE=honeypot_logs.txt
+set MAX_LOGS=100
+set DELAY_SECONDS=2
+
+echo [+] Gerando logs para honeypot em: %LOG_FILE%
+echo [+] Pressione CTRL+C para parar.
+echo.
+
+:: Lista de IPs falsos para simular ataques
+set IP[0]=192.168.1.100
+set IP[1]=45.227.253.109
+set IP[2]=185.143.223.41
+set IP[3]=91.234.56.78
+set IP[4]=203.176.135.90
+
+:: Lista de usuários/senhas tentados em ataques de força bruta
+set USER[0]=admin
+set USER[1]=root
+set USER[2]=user
+set USER[3]=test
+set USER[4]=guest
+
+set PASS[0]=123456
+set PASS[1]=password
+set PASS[2]=qwerty
+set PASS[3]=admin123
+set PASS[4]=letmein
+
+:: Lista de portas comuns para varredura
+set PORT[0]=22   (SSH)
+set PORT[1]=80   (HTTP)
+set PORT[2]=443  (HTTPS)
+set PORT[3]=3389 (RDP)
+set PORT[4]=21   (FTP)
+
+:: Gerar logs aleatórios
+for /l %%i in (1,1,%MAX_LOGS%) do (
+    set /a RAND_IP=!random! %% 5
+    set /a RAND_USER=!random! %% 5
+    set /a RAND_PASS=!random! %% 5
+    set /a RAND_PORT=!random! %% 5
+    set /a RAND_EVENT=!random! %% 3
+
+    if !RAND_EVENT! == 0 (
+        echo [%date% %time%] Tentativa de login SSH falhou - IP: !IP[%RAND_IP%]!, Usuário: !USER[%RAND_USER%]!, Senha: !PASS[%RAND_PASS%]! >> %LOG_FILE%
+        echo [%date% %time%] Tentativa de login SSH falhou - IP: !IP[%RAND_IP%]!, Usuário: !USER[%RAND_USER%]!, Senha: !PASS[%RAND_PASS%]!
+    ) else if !RAND_EVENT! == 1 (
+        echo [%date% %time%] Varredura de porta detectada - IP: !IP[%RAND_IP%]!, Porta: !PORT[%RAND_PORT%]! >> %LOG_FILE%
+        echo [%date% %time%] Varredura de porta detectada - IP: !IP[%RAND_IP%]!, Porta: !PORT[%RAND_PORT%]!
+    ) else (
+        echo [%date% %time%] Tentativa de conexão RDP - IP: !IP[%RAND_IP%]!, Usuário: !USER[%RAND_USER%]! >> %LOG_FILE%
+        echo [%date% %time%] Tentativa de conexão RDP - IP: !IP[%RAND_IP%]!, Usuário: !USER[%RAND_USER%]!
     )
-    return caminho
 
-# Configuração (ajuste esses nomes conforme seus arquivos)
-COLUNA_PROJETO = 'product'  # Coluna que identifica os projetos
-COLUNA_MS = 'ms'            # Coluna com os MS
-ARQUIVO1 = r'C:\Users\Leonardo Vargas\PycharmProjects\comparador\pythonProject1\arquivo1.csv'
-ARQUIVO2 = r'C:\Users\Leonardo Vargas\PycharmProjects\comparador\pythonProject1\arquivo2.csv'
+    timeout /t %DELAY_SECONDS% /nobreak >nul
+)
 
-try:
-    # 1. Carregar os arquivos
-    df1 = pd.read_csv(ARQUIVO1, delimiter=';')
-    df2 = pd.read_csv(ARQUIVO2, delimiter=';')
-    
-    # 2. Padronizar colunas
-    df1.columns = df1.columns.str.strip().str.lower()
-    df2.columns = df2.columns.str.strip().str.lower()
-    
-    # 3. Verificar colunas essenciais
-    for col in [COLUNA_PROJETO, COLUNA_MS]:
-        if col not in df1.columns:
-            raise ValueError(f"Coluna '{col}' não encontrada no arquivo1")
-    
-    if 'project name' not in df2.columns:
-        raise ValueError("Coluna 'project name' não encontrada no arquivo2")
-
-    # 4. Calcular status (OK/NOK)
-    df1['status'] = 'nok'
-    df1.loc[df1[COLUNA_MS].isin(df2['project name']), 'status'] = 'ok'
-
-    # 5. Calcular estatísticas por projeto
-    stats = df1.groupby(COLUNA_PROJETO).agg(
-        total_ms=(COLUNA_MS, 'count'),
-        qtd_ok=('status', lambda x: (x == 'ok').sum()),
-        qtd_nok=('status', lambda x: (x == 'nok').sum())
-    )
-    
-    # 6. Calcular porcentagens
-    stats['%_ok'] = (stats['qtd_ok'] / stats['total_ms'] * 100).round(2)
-    stats['%_nok'] = (stats['qtd_nok'] / stats['total_ms'] * 100).round(2)
-    
-    # 7. Juntar ao dataframe original (mantendo todas as linhas)
-    df_final = df1.join(stats, on=COLUNA_PROJETO, how='left')
-
-    # 8. Ordenar colunas (opcional)
-    colunas_ordenadas = [
-        COLUNA_PROJETO, COLUNA_MS, 'status',
-        'total_ms', 'qtd_ok', 'qtd_nok', '%_ok', '%_nok'
-    ] + [col for col in df1.columns if col not in [COLUNA_PROJETO, COLUNA_MS, 'status']]
-    
-    df_final = df_final[colunas_ordenadas]
-
-    # 9. Salvar resultado
-    caminho_saida = escolher_local_salvamento()
-    if caminho_saida:
-        df_final.to_csv(caminho_saida, index=False, sep=';')
-        print(f"✅ Arquivo gerado com sucesso em: {caminho_saida}")
-        print("\n🔍 Amostra das novas colunas:")
-        print(df_final[[COLUNA_PROJETO, COLUNA_MS, 'status', 'total_ms', 'qtd_ok', 'qtd_nok', '%_ok', '%_nok']].head())
-    else:
-        print("Operação cancelada pelo usuário.")
-
-except Exception as e:
-    print(f"❌ Erro: {str(e)}")
-    print("\n🔧 Dicas para correção:")
-    print(f"1. Verifique se a coluna de projeto se chama '{COLUNA_PROJETO}'")
-    print(f"2. Confirme se a coluna de MS se chama '{COLUNA_MS}'")
-    print("3. Verifique o delimitador dos arquivos")
+echo.
+echo [+] Logs gerados com sucesso em %LOG_FILE%.
+pause
