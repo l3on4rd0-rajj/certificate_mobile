@@ -1,25 +1,27 @@
 @echo off
-title Honeypot Log Generator
+title Honeypot Log Generator (Fixed)
 color 0A
 setlocal enabledelayedexpansion
 
 :: Configurações
 set LOG_FILE=honeypot_logs.txt
-set MAX_LOGS=100
-set DELAY_SECONDS=2
+set MAX_LOGS=20
+set DELAY_SECONDS=1
+
+:: Limpar arquivo de log existente (opcional)
+if exist %LOG_FILE% del %LOG_FILE%
 
 echo [+] Gerando logs para honeypot em: %LOG_FILE%
 echo [+] Pressione CTRL+C para parar.
 echo.
 
-:: Lista de IPs falsos para simular ataques
+:: Listas de dados para logs
 set IP[0]=192.168.1.100
 set IP[1]=45.227.253.109
 set IP[2]=185.143.223.41
 set IP[3]=91.234.56.78
 set IP[4]=203.176.135.90
 
-:: Lista de usuários/senhas tentados em ataques de força bruta
 set USER[0]=admin
 set USER[1]=root
 set USER[2]=user
@@ -32,14 +34,13 @@ set PASS[2]=qwerty
 set PASS[3]=admin123
 set PASS[4]=letmein
 
-:: Lista de portas comuns para varredura
-set PORT[0]=22   (SSH)
-set PORT[1]=80   (HTTP)
-set PORT[2]=443  (HTTPS)
+set PORT[0]=22 (SSH)
+set PORT[1]=80 (HTTP)
+set PORT[2]=443 (HTTPS)
 set PORT[3]=3389 (RDP)
-set PORT[4]=21   (FTP)
+set PORT[4]=21 (FTP)
 
-:: Gerar logs aleatórios
+:: Gerar logs
 for /l %%i in (1,1,%MAX_LOGS%) do (
     set /a RAND_IP=!random! %% 5
     set /a RAND_USER=!random! %% 5
@@ -47,17 +48,20 @@ for /l %%i in (1,1,%MAX_LOGS%) do (
     set /a RAND_PORT=!random! %% 5
     set /a RAND_EVENT=!random! %% 3
 
-    if !RAND_EVENT! == 0 (
-        echo [%date% %time%] Tentativa de login SSH falhou - IP: !IP[%RAND_IP%]!, Usuário: !USER[%RAND_USER%]!, Senha: !PASS[%RAND_PASS%]! >> %LOG_FILE%
-        echo [%date% %time%] Tentativa de login SSH falhou - IP: !IP[%RAND_IP%]!, Usuário: !USER[%RAND_USER%]!, Senha: !PASS[%RAND_PASS%]!
-    ) else if !RAND_EVENT! == 1 (
-        echo [%date% %time%] Varredura de porta detectada - IP: !IP[%RAND_IP%]!, Porta: !PORT[%RAND_PORT%]! >> %LOG_FILE%
-        echo [%date% %time%] Varredura de porta detectada - IP: !IP[%RAND_IP%]!, Porta: !PORT[%RAND_PORT%]!
-    ) else (
-        echo [%date% %time%] Tentativa de conexão RDP - IP: !IP[%RAND_IP%]!, Usuário: !USER[%RAND_USER%]! >> %LOG_FILE%
-        echo [%date% %time%] Tentativa de conexão RDP - IP: !IP[%RAND_IP%]!, Usuário: !USER[%RAND_USER%]!
-    )
+    :: Obter data/hora formatada (sem vírgulas)
+    for /f "tokens=1-3 delims=/ " %%a in ("%date%") do set DATE_FMT=%%a/%%b/%%c
+    set TIME_FMT=%time:~0,8%
 
+    if !RAND_EVENT! == 0 (
+        echo [!DATE_FMT% !TIME_FMT%] Tentativa de login SSH falhou - IP: !IP[%RAND_IP%]!, Usuário: !USER[%RAND_USER%]!, Senha: !PASS[%RAND_PASS%]! >> %LOG_FILE%
+        echo [!DATE_FMT% !TIME_FMT%] Tentativa de login SSH falhou - IP: !IP[%RAND_IP%]!, Usuário: !USER[%RAND_USER%]!, Senha: !PASS[%RAND_PASS%]!
+    ) else if !RAND_EVENT! == 1 (
+        echo [!DATE_FMT% !TIME_FMT%] Varredura de porta detectada - IP: !IP[%RAND_IP%]!, Porta: !PORT[%RAND_PORT%]! >> %LOG_FILE%
+        echo [!DATE_FMT% !TIME_FMT%] Varredura de porta detectada - IP: !IP[%RAND_IP%]!, Porta: !PORT[%RAND_PORT%]!
+    ) else (
+        echo [!DATE_FMT% !TIME_FMT%] Tentativa de conexão RDP - IP: !IP[%RAND_IP%]!, Usuário: !USER[%RAND_USER%]! >> %LOG_FILE%
+        echo [!DATE_FMT% !TIME_FMT%] Tentativa de conexão RDP - IP: !IP[%RAND_IP%]!, Usuário: !USER[%RAND_USER%]!
+    )
     timeout /t %DELAY_SECONDS% /nobreak >nul
 )
 
