@@ -334,3 +334,134 @@ Main
 }
 
 main
+
+
+--------------------------------------------------------------------------------------
+
+#!/bin/bash
+
+# Script para testar honeypots simulando atividades suspeitas (não maliciosas)
+# Objetivo: Verificar se os logs estão sendo gerados e coletados pelo Splunk
+
+# Configurações
+LOG_FILE="/tmp/honeypot_test_$(date +%Y%m%d_%H%M%S).log"
+HONEYPOTS=("192.168.1.100" "192.168.1.101" "192.168.1.102")  # Substitua pelos IPs dos seus honeypots
+SSH_USER="root"
+MYSQL_USER="admin"
+RDP_USER="Administrator"
+
+# Função para registrar atividades
+log() {
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" | tee -a "$LOG_FILE"
+}
+
+# Verificar dependências (versão simplificada)
+check_dependencies() {
+    local deps=("nmap" "nc" "curl" "ssh" "mysql")
+    for dep in "${deps[@]}"; do
+        if ! command -v "$dep" >/dev/null 2>&1; then
+            log "ERRO: $dep não instalado. Instale com: sudo apt install $dep"
+            exit 1
+        fi
+    done
+}
+
+# Teste de conexão SSH (versão discreta)
+test_ssh() {
+    local host=$1
+    log "Iniciando teste SSH em $host"
+    
+    # Tentativas de login discretas
+    local passwords=("invalidpass" "$(date +%s)" "testing123")
+    
+    for pass in "${passwords[@]}"; do
+        log "Testando credencial SSH: $SSH_USER/$pass"
+        sshpass -p "$pass" ssh -o StrictHostKeyChecking=no \
+                -o ConnectTimeout=3 \
+                -o PreferredAuthentications=password \
+                "$SSH_USER@$host" exit 2>&1 | tee -a "$LOG_FILE"
+    done
+    
+    # Comandos SSH básicos (se conseguir conectar)
+    log "Testando comando SSH básico"
+    ssh -o BatchMode=yes -o ConnectTimeout=3 "$SSH_USER@$host" "whoami; id" 2>&1 | tee -a "$LOG_FILE"
+    
+    log "Teste SSH concluído para $host"
+}
+
+# Teste de conexão MySQL (versão segura)
+test_mysql() {
+    local host=$1
+    log "Iniciando teste MySQL em $host"
+    
+    # Tentativas de conexão não intrusivas
+    local test_queries=(
+        "SELECT version()" 
+        "SHOW DATABASES" 
+        "SELECT user FROM mysql.user LIMIT 1"
+    )
+    
+    for query in "${test_queries[@]}"; do
+        log "Executando query: $query"
+        mysql -h "$host" -u "$MYSQL_USER" -p"invalidpassword" -e "$query" 2>&1 | tee -a "$LOG_FILE"
+        sleep 1
+    done
+    
+    log "Teste MySQL concluído para $host"
+}
+
+# Teste de port scanning (versão otimizada)
+test_nmap() {
+    local host=$1
+    log "Iniciando scan Nmap em $host (modo discreto)"
+    
+    # Scan rápido e discreto
+    nmap -T3 --max-retries 1 --max-rtt-timeout 500ms "$host" 2>&1 | tee -a "$LOG_FILE"
+    
+    # Verificação apenas de portas específicas
+    nmap -T3 -p 21,22,80,443,3389,3306 "$host" 2>&1 | tee -a "$LOG_FILE"
+    
+    log "Teste Nmap concluído para $host"
+}
+
+# Teste de conexões genéricas
+test_generic() {
+    local host=$1
+    log "Iniciando testes genéricos em $host"
+    
+    # Teste de portas com timeout reduzido
+    local ports=(21 22 80 443 3389 3306 8080)
+    for port in "${ports[@]}"; do
+        log "Testando porta $port"
+        timeout 2 bash -c "echo > /dev/tcp/$host/$port" 2>&1 | tee -a "$LOG_FILE"
+    done
+    
+    # Testes HTTP/S
+    log "Testando requisições web"
+    curl -sSI --connect-timeout 3 "http://$host" 2>&1 | tee -a "$LOG_FILE"
+    curl -sSIk --connect-timeout 3 "https://$host" 2>&1 | tee -a "$LOG_FILE"
+    
+    log "Testes genéricos concluídos para $host"
+}
+
+# Execução principal
+main() {
+    check_dependencies
+    log "Iniciando testes de honeypot (modo discreto)"
+    
+    for honeypot in "${HONEYPOTS[@]}"; do
+        log "Testando honeypot: $honeypot"
+        test_ssh "$honeypot"
+        test_mysql "$honeypot"
+        test_nmap "$honeypot"
+        test_generic "$honeypot"
+        log "Testes concluídos para $honeypot"
+        sleep $((RANDOM % 5 + 1))  # Intervalo aleatório entre 1-5 segundos
+    done
+    
+    log "Todos os testes foram concluídos"
+    log "Verifique os logs no Splunk para confirmar a coleta"
+    log "Log local salvo em: $LOG_FILE"
+}
+
+main
