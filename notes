@@ -1,129 +1,156 @@
 #!/bin/bash
 
-# Script para testar honeypots simulando atividades maliciosas
-# Objetivo: Verificar se os logs estão sendo gerados e coletados pelo Splunk
+# Script refatorado para testar honeypots com implementação Netcat para MySQL
+# Objetivo: Verificar geração e coleta de logs no Splunk
 
-# Configurações
-LOG_FILE="/tmp/honeypot_test_$(date +%Y%m%d_%H%M%S).log"
-HONEYPOTS=("192.168.1.100" "192.168.1.101" "192.168.1.102")  # Substitua pelos IPs dos seus honeypots
-SSH_USER="root"
-MYSQL_USER="admin"
-RDP_USER="Administrator"
-WORDLIST="/usr/share/wordlists/rockyou.txt"  # Ajuste para o caminho da sua wordlist
+## Configurações Globais
+readonly LOG_FILE="/tmp/honeypot_test_$(date +%Y%m%d_%H%M%S).log"
+readonly HONEYPOTS=("192.168.1.100" "192.168.1.101" "192.168.1.102")
+readonly SSH_USER="root"
+readonly RDP_USER="Administrator"
+readonly MYSQL_HANDSHAKE="\x00\x00\x00\x0a\x08\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
 
-# Função para registrar atividades
+## Funções Auxiliares
+
+# Registrar atividades com timestamp
 log() {
-    echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" | tee -a "$LOG_FILE"
+    local message="$1"
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] ${message}" | tee -a "${LOG_FILE}"
 }
 
-# Verificar dependências
-check_dependencies() {
-    command -v nmap >/dev/null 2>&1 || { echo >&2 "nmap não instalado. Instale com: sudo apt install nmap"; exit 1; }
-    command -v hydra >/dev/null 2>&1 || { echo >&2 "hydra não instalado. Instale com: sudo apt install hydra"; exit 1; }
-    command -v nc >/dev/null 2>&1 || { echo >&2 "netcat não instalado. Instale com: sudo apt install netcat"; exit 1; }
+# Verificar dependências essenciais
+verify_dependencies() {
+    local required=("nmap" "nc" "ssh" "curl")
+    local missing=()
+    
+    for cmd in "${required[@]}"; do
+        if ! command -v "${cmd}" >/dev/null 2>&1; then
+            missing+=("${cmd}")
+        fi
+    done
+
+    if [ ${#missing[@]} -gt 0 ]; then
+        log "ERRO: Dependências ausentes: ${missing[*]}"
+        log "Instale com: sudo apt install ${missing[*]}"
+        exit 1
+    fi
 }
 
-# Teste de conexão SSH
-test_ssh() {
-    local host=$1
-    log "Iniciando teste SSH em $host"
+## Funções de Teste
+
+# Teste de conexão SSH seguro
+test_ssh_connection() {
+    local host="$1"
+    log "Iniciando teste SSH em ${host}"
     
-    # Tentativa de conexão simples
-    ssh -o BatchMode=yes -o ConnectTimeout=5 -o StrictHostKeyChecking=no "$SSH_USER@$host" exit 2>&1 | tee -a "$LOG_FILE"
+    # Tentativa de conexão básica
+    ssh -o BatchMode=yes -o ConnectTimeout=3 -o StrictHostKeyChecking=no "${SSH_USER}@${host}" exit 2>&1 | tee -a "${LOG_FILE}"
     
-    # Simulação de brute force (versão simplificada)
-    log "Simulando brute force SSH em $host (3 tentativas)"
-    for pass in "password" "123456" "admin"; do
-        sshpass -p "$pass" ssh -o StrictHostKeyChecking=no "$SSH_USER@$host" exit 2>&1 | tee -a "$LOG_FILE"
+    # Teste com credenciais inválidas
+    local fake_passwords=("invalid_pass" "$(date +%s)" "honeypot_test")
+    for pass in "${fake_passwords[@]}"; do
+        sshpass -p "${pass}" ssh -o StrictHostKeyChecking=no -o ConnectTimeout=2 "${SSH_USER}@${host}" exit 2>&1 | tee -a "${LOG_FILE}"
+        sleep 1
     done
     
-    log "Teste SSH concluído para $host"
+    log "Teste SSH concluído para ${host}"
 }
 
-# Teste de conexão MySQL
-test_mysql() {
-    local host=$1
-    log "Iniciando teste MySQL em $host"
+# Teste MySQL via Netcat (implementação refatorada)
+test_mysql_service() {
+    local host="$1"
+    log "Iniciando análise MySQL em ${host} via Netcat"
     
-    # Tentativa de conexão simples
-    mysql -h "$host" -u "$MYSQL_USER" -p"wrongpassword" -e "exit" 2>&1 | tee -a "$LOG_FILE"
-    
-    # Tentativa de comandos SQL
-    log "Testando injeção SQL básica em $host"
-    for cmd in "SELECT version();" "SHOW databases;" "SELECT * FROM information_schema.tables;"; do
-        mysql -h "$host" -u "$MYSQL_USER" -p"wrongpassword" -e "$cmd" 2>&1 | tee -a "$LOG_FILE"
-    done
-    
-    log "Teste MySQL concluído para $host"
-}
-
-# Teste de conexão RDP
-test_rdp() {
-    local host=$1
-    log "Iniciando teste RDP em $host"
-    
-    # Tentativa de conexão básica (requer xfreerdp ou rdesktop)
-    if command -v xfreerdp >/dev/null 2>&1; then
-        xfreerdp /v:"$host" /u:"$RDP_USER" /p:"wrongpassword" +auth-only /sec:nla 2>&1 | tee -a "$LOG_FILE"
-    elif command -v rdesktop >/dev/null 2>&1; then
-        rdesktop "$host" -u "$RDP_USER" -p "wrongpassword" 2>&1 | tee -a "$LOG_FILE"
+    # Verificação básica de porta
+    if nc -zv -w 3 "${host}" 3306 2>&1 | tee -a "${LOG_FILE}"; then
+        log "Porta MySQL (3306) acessível em ${host}"
+        
+        # Envio de handshake simulado
+        log "Enviando handshake MySQL simulado"
+        if echo -e "${MYSQL_HANDSHAKE}" | nc -w 3 "${host}" 3306 | head -c 20 | tee -a "${LOG_FILE}"; then
+            log "Resposta do serviço MySQL detectada"
+        else
+            log "Serviço não respondeu ao handshake"
+        fi
     else
-        log "Ferramenta RDP não encontrada (xfreerdp ou rdesktop)"
+        log "Porta MySQL (3306) inacessível em ${host}"
     fi
     
-    log "Teste RDP concluído para $host"
+    log "Análise MySQL concluída para ${host}"
 }
 
-# Teste de port scanning com Nmap
-test_nmap() {
-    local host=$1
-    log "Iniciando scan Nmap em $host"
+# Teste RDP otimizado
+test_rdp_service() {
+    local host="$1"
+    log "Testando serviço RDP em ${host}"
     
-    # Scan rápido de portas comuns
-    nmap -T4 -F "$host" 2>&1 | tee -a "$LOG_FILE"
+    if command -v nc >/dev/null; then
+        if nc -zv -w 3 "${host}" 3389 2>&1 | tee -a "${LOG_FILE}"; then
+            log "Porta RDP (3389) aberta em ${host}"
+            # Simulação básica de conexão
+            echo -e "\x03\x00\x00\x0b\x06\xe0\x00\x00\x00\x00\x00" | nc -w 2 "${host}" 3389 | head -c 10 | tee -a "${LOG_FILE}"
+        else
+            log "Porta RDP (3389) fechada em ${host}"
+        fi
+    fi
     
-    # Detecção de serviços
-    nmap -sV -T4 "$host" -p 21,22,80,443,3389 2>&1 | tee -a "$LOG_FILE"
-    
-    log "Teste Nmap concluído para $host"
+    log "Teste RDP concluído para ${host}"
 }
 
-# Teste de conexões genéricas
-test_generic() {
-    local host=$1
-    log "Iniciando testes genéricos em $host"
+# Varredura de portas com Nmap
+perform_port_scan() {
+    local host="$1"
+    log "Iniciando varredura Nmap em ${host}"
     
-    # Tentativa de conexão em várias portas com netcat
-    for port in 21 22 23 80 443 8080 3389; do
-        log "Testando conexão TCP na porta $port"
-        nc -zv -w 2 "$host" "$port" 2>&1 | tee -a "$LOG_FILE"
+    # Scan rápido de portas essenciais
+    nmap -T3 --max-retries 1 --max-rtt-timeout 500ms -p 21,22,80,443,3389,3306 "${host}" 2>&1 | tee -a "${LOG_FILE}"
+    
+    log "Varredura Nmap concluída para ${host}"
+}
+
+# Testes genéricos de rede
+test_network_services() {
+    local host="$1"
+    log "Iniciando testes genéricos em ${host}"
+    
+    # Teste de portas comuns
+    local common_ports=(21 22 80 443 8080 3389 3306)
+    for port in "${common_ports[@]}"; do
+        timeout 2 bash -c "echo > /dev/tcp/${host}/${port}" 2>&1 | tee -a "${LOG_FILE}"
     done
     
-    # Tentativa de HTTP básico
-    log "Testando requisição HTTP básica"
-    curl -s -I "http://$host" 2>&1 | tee -a "$LOG_FILE"
-    curl -s -I "https://$host" 2>&1 | tee -a "$LOG_FILE"
+    # Testes HTTP/S básicos
+    curl -sI --connect-timeout 3 "http://${host}" 2>&1 | tee -a "${LOG_FILE}"
+    curl -sIk --connect-timeout 3 "https://${host}" 2>&1 | tee -a "${LOG_FILE}"
     
-    log "Testes genéricos concluídos para $host"
+    log "Testes genéricos concluídos para ${host}"
 }
 
-# Execução principal
+## Execução Principal
+
 main() {
-    check_dependencies
-    log "Iniciando testes de honeypot"
+    verify_dependencies
+    log "Início dos testes de honeypot"
     
-    for honeypot in "${HONEYPOTS[@]}"; do
-        log "Testando honeypot: $honeypot"
-        test_ssh "$honeypot"
-        test_mysql "$honeypot"
-        test_rdp "$honeypot"
-        test_nmap "$honeypot"
-        test_generic "$honeypot"
-        log "Testes concluídos para $honeypot"
-        sleep 5
+    for target in "${HONEYPOTS[@]}"; do
+        log "Iniciando testes no host: ${target}"
+        
+        test_ssh_connection "${target}"
+        test_mysql_service "${target}"
+        test_rdp_service "${target}"
+        perform_port_scan "${target}"
+        test_network_services "${target}"
+        
+        log "Testes concluídos para ${target}"
+        sleep $((RANDOM % 4 + 1))  # Intervalo aleatório entre 1-5 segundos
     done
     
-    log "Todos os testes foram concluídos"
+    log "Todos os testes foram finalizados"
+    log "Arquivo de log disponível em: ${LOG_FILE}"
+    log "Verifique os logs no Splunk para validação"
+}
+
+main
 
 
 ---------------------------------------------------------------------------
