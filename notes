@@ -157,212 +157,225 @@ main
 
 <#
 .SYNOPSIS
-Script para testar honeypots simulando atividades maliciosas no Windows
-Objetivo: Verificar se os logs estão sendo gerados e coletados pelo Splunk
+Script para gerar uma grande quantidade de logs em Windows para testar sistemas de monitoramento como Splunk.
+
+.DESCRIPTION
+Este script simula atividades suspeitas/maliciosas usando apenas recursos nativos do Windows,
+gerando diversos tipos de logs sem a necessidade de ferramentas externas.
 #>
 
 # Configurações
 $LOG_FILE = "C:\temp\honeypot_test_$(Get-Date -Format 'yyyyMMdd_HHmmss').log"
-$HONEYPOTS = @("192.168.1.100", "192.168.1.101", "192.168.1.102")  # Substitua pelos IPs dos seus honeypots
-$SSH_USER = "root"
-$MYSQL_USER = "admin"
-$RDP_USER = "Administrator"
+$EVENT_LOG_SOURCE = "Honeypot-Test"
+$TEST_DURATION_MINUTES = 5  # Duração total dos testes
+$HIGH_VOLUME_INTERVAL_SECONDS = 1  # Intervalo para geração de alto volume
 
 # Função para registrar atividades
-function Log {
+function Write-Log {
     param (
-        [string]$message
+        [string]$message,
+        [string]$level = "INFO"
     )
     $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
-    $logEntry = "[$timestamp] $message"
-    Write-Output $logEntry | Out-File -FilePath $LOG_FILE -Append
-    Write-Output $logEntry
+    $logEntry = "[$timestamp] [$level] $message"
+    Write-Output $logEntry | Out-File -FilePath $LOG_FILE -Append -Encoding utf8
+    Write-Host $logEntry -ForegroundColor $(if ($level -eq "ERROR") { "Red" } elseif ($level -eq "WARNING") { "Yellow" } else { "White" })
 }
 
-# Verificar dependências
-function Check-Dependencies {
-    # Verificar se o Nmap está instalado (opcional)
-    if (-not (Get-Command nmap -ErrorAction SilentlyContinue)) {
-        Log "AVISO: Nmap não encontrado. Considere instalar para testes mais completos."
-    }
-    
-    # Verificar se o Putty/Plink está instalado para SSH
-    if (-not (Get-Command plink -ErrorAction SilentlyContinue)) {
-        Log "AVISO: Plink (Putty) não encontrado. Testes SSH limitados."
-    }
-}
-
-# Teste de conexão SSH
-function Test-SSH {
-    param (
-        [string]$host
-    )
-    Log "Iniciando teste SSH em $host"
-    
-    # Tentativa de conexão básica (requer Plink/Putty)
-    if (Get-Command plink -ErrorAction SilentlyContinue) {
-        try {
-            $output = plink -ssh "$SSH_USER@$host" -pw "wrongpassword" -batch -no-antispoof exit 2>&1
-            Log $output
-        } catch {
-            Log "Erro SSH: $_"
-        }
-    } else {
-        # Alternativa usando .NET (mais limitada)
-        try {
-            $sshClient = New-Object System.Net.Sockets.TcpClient($host, 22)
-            Log "Conexão TCP/22 estabelecida com $host"
-            $sshClient.Close()
-        } catch {
-            Log "Falha ao conectar em SSH ($host): $_"
-        }
-    }
-    
-    Log "Teste SSH concluído para $host"
-}
-
-# Teste de conexão MySQL
-function Test-MySQL {
-    param (
-        [string]$host
-    )
-    Log "Iniciando teste MySQL em $host"
-    
-    # Requer MySQL Client instalado ou módulo MySql.Data
+# Criar fonte de log de eventos se não existir
+function Initialize-EventLogSource {
     try {
-        # Tentativa básica de conexão (se o módulo MySQL estiver disponível)
-        if (Get-Module -Name MySql.Data -ListAvailable) {
-            Add-Type -Path "C:\Program Files (x86)\MySQL\MySQL Connector Net 8.0.XX\Assemblies\v4.5.2\MySql.Data.dll"
-            $connStr = "server=$host;uid=$MYSQL_USER;pwd=wrongpassword;database=mysql;Connect Timeout=5"
-            $conn = New-Object MySql.Data.MySqlClient.MySqlConnection($connStr)
-            $conn.Open()
-            Log "Conexão MySQL bem-sucedida (não esperado)"
-            $conn.Close()
-        } else {
-            # Alternativa usando telnet/netcat para testar a porta
-            Test-NetConnection -ComputerName $host -Port 3306 -InformationLevel Quiet
-            if ($?) {
-                Log "Porta MySQL (3306) aberta em $host"
-            } else {
-                Log "Falha ao conectar na porta MySQL (3306)"
-            }
+        if (-not [System.Diagnostics.EventLog]::SourceExists($EVENT_LOG_SOURCE)) {
+            New-EventLog -LogName "Application" -Source $EVENT_LOG_SOURCE
+            Write-Log "Fonte de log de eventos criada: $EVENT_LOG_SOURCE"
         }
     } catch {
-        Log "Erro MySQL: $_"
+        Write-Log "Erro ao criar fonte de log de eventos: $_" -level "ERROR"
     }
-    
-    Log "Teste MySQL concluído para $host"
 }
 
-# Teste de conexão RDP
-function Test-RDP {
-    param (
-        [string]$host
+# Gerar eventos de log do Windows
+function Generate-EventLogs {
+    $eventTypes = @("Information", "Warning", "Error")
+    $eventIDs = @(1000..1099)  # Faixa de IDs de evento
+    $messages = @(
+        "Tentativa de acesso não autorizado",
+        "Falha na autenticação",
+        "Acesso negado",
+        "Tentativa de alteração de permissões",
+        "Processo suspeito iniciado",
+        "Alteração na configuração de segurança",
+        "Tentativa de acesso a recurso restrito",
+        "Comando potencialmente malicioso detectado",
+        "Padrão de tráfego anormal detectado",
+        "Variação na atividade do sistema"
     )
-    Log "Iniciando teste RDP em $host"
+
+    $eventType = Get-Random -InputObject $eventTypes
+    $eventID = Get-Random -InputObject $eventIDs
+    $message = Get-Random -InputObject $messages
     
-    # Testar se a porta RDP está aberta
     try {
-        $rdpTest = Test-NetConnection -ComputerName $host -Port 3389 -InformationLevel Detailed
-        if ($rdpTest.TcpTestSucceeded) {
-            Log "Porta RDP (3389) aberta em $host"
-            
-            # Tentativa de conexão RDP (simulada)
-            Log "Simulando tentativa RDP com credenciais inválidas"
-            # Nota: Não podemos realmente autenticar programaticamente sem ferramentas adicionais
-        } else {
-            Log "Porta RDP (3389) fechada em $host"
+        Write-EventLog -LogName "Application" -Source $EVENT_LOG_SOURCE -EntryType $eventType -EventID $eventID -Message $message
+        Write-Log "Evento gerado: ID=$eventID, Tipo=$eventType, Mensagem=$message"
+    } catch {
+        Write-Log "Erro ao gerar evento: $_" -level "ERROR"
+    }
+}
+
+# Simular tentativas de acesso a arquivos
+function Simulate-FileAccess {
+    $targetFolders = @(
+        "C:\Windows\System32",
+        "C:\Program Files",
+        "C:\Users\Public",
+        "C:\Temp",
+        "C:\inetpub"
+    )
+    
+    $actions = @("Read", "Write", "Delete", "Modify")
+    $fileTypes = @("*.exe", "*.dll", "*.config", "*.log", "*.bat")
+    
+    $folder = Get-Random -InputObject $targetFolders
+    $action = Get-Random -InputObject $actions
+    $fileType = Get-Random -InputObject $fileTypes
+    
+    try {
+        # Tentar listar arquivos (simula acesso)
+        $files = Get-ChildItem -Path $folder -Filter $fileType -ErrorAction Stop | Select-Object -First 3
+        $fileList = $files -join ", "
+        Write-Log "Simulando $action acesso em $folder para arquivos $fileType. Encontrados: $fileList"
+    } catch {
+        Write-Log "Falha ao acessar $folder: $_" -level "WARNING"
+    }
+}
+
+# Simular atividades de rede
+function Simulate-NetworkActivity {
+    $ports = @(80, 443, 22, 3389, 445, 21, 23, 3306, 8080)
+    $methods = @("GET", "POST", "PUT", "DELETE", "CONNECT")
+    $urls = @(
+        "http://example.com/admin",
+        "https://test.com/login.php",
+        "http://internal/api/v1/users",
+        "https://secure.com/config.xml",
+        "http://test.local/backup.zip"
+    )
+    
+    $port = Get-Random -InputObject $ports
+    $method = Get-Random -InputObject $methods
+    $url = Get-Random -InputObject $urls
+    
+    # Simular tentativa de conexão
+    try {
+        $test = Test-NetConnection -ComputerName "example.com" -Port $port -InformationLevel Quiet -WarningAction SilentlyContinue
+        Write-Log "Tentativa de conexão simulada: Porta $port via $method para $url - Sucesso: $test"
+    } catch {
+        Write-Log "Falha na conexão simulada: Porta $port via $method para $url - Erro: $_" -level "WARNING"
+    }
+}
+
+# Simular execução de processos suspeitos
+function Simulate-SuspiciousProcesses {
+    $processNames = @(
+        "powershell.exe -EncodedCommand",
+        "cmd.exe /c whoami",
+        "wmic process get",
+        "net user hacker /add",
+        "schtasks /create",
+        "reg add HKLM\Software\Microsoft\Windows\CurrentVersion\Run",
+        "netstat -ano",
+        "systeminfo",
+        "nslookup example.com",
+        "certutil -urlcache -split -f"
+    )
+    
+    $process = Get-Random -InputObject $processNames
+    
+    # Registrar a tentativa sem realmente executar comandos perigosos
+    Write-Log "Simulação de execução de processo suspeito: $process" -level "WARNING"
+}
+
+# Simular tentativas de login
+function Simulate-LoginAttempts {
+    $usernames = @(
+        "admin",
+        "administrator",
+        "root",
+        "user",
+        "test",
+        "backup",
+        "sqladmin",
+        "guest"
+    )
+    
+    $sources = @(
+        "192.168.1.100",
+        "10.0.0.15",
+        "172.16.0.23",
+        "45.33.12.78",
+        "internal-pc",
+        "unknown-source"
+    )
+    
+    $username = Get-Random -InputObject $usernames
+    $source = Get-Random -InputObject $sources
+    
+    Write-Log "Tentativa de login falha para usuário: $username de $source" -level "WARNING"
+}
+
+# Gerar alto volume de logs
+function Generate-HighVolumeLogs {
+    $startTime = Get-Date
+    $endTime = $startTime.AddMinutes($TEST_DURATION_MINUTES)
+    $counter = 0
+    
+    Write-Log "Iniciando geração de alto volume de logs por $TEST_DURATION_MINUTES minutos..."
+    
+    while ((Get-Date) -lt $endTime) {
+        $counter++
+        
+        # Alternar entre diferentes tipos de geração de logs
+        $activityType = Get-Random -Minimum 1 -Maximum 5
+        switch ($activityType) {
+            1 { Generate-EventLogs }
+            2 { Simulate-FileAccess }
+            3 { Simulate-NetworkActivity }
+            4 { Simulate-SuspiciousProcesses }
+            5 { Simulate-LoginAttempts }
         }
-    } catch {
-        Log "Erro ao testar RDP: $_"
-    }
-    
-    Log "Teste RDP concluído para $host"
-}
-
-# Teste de port scanning
-function Test-PortScan {
-    param (
-        [string]$host
-    )
-    Log "Iniciando scan de portas em $host"
-    
-    # Portas comuns para testar
-    $commonPorts = @(21, 22, 23, 80, 443, 3306, 3389, 8080)
-    
-    foreach ($port in $commonPorts) {
-        try {
-            $test = Test-NetConnection -ComputerName $host -Port $port -InformationLevel Quiet
-            if ($test) {
-                Log "Porta $port aberta em $host"
-            } else {
-                Log "Porta $port fechada em $host"
-            }
-        } catch {
-            Log "Erro ao testar porta $port: $_"
+        
+        # Progresso
+        if ($counter % 10 -eq 0) {
+            $percentComplete = [math]::Round((((Get-Date) - $startTime).TotalSeconds / ($TEST_DURATION_MINUTES * 60)) * 100, 2)
+            Write-Log "Progresso: $percentComplete% ($counter eventos gerados)"
         }
+        
+        Start-Sleep -Seconds $HIGH_VOLUME_INTERVAL_SECONDS
     }
     
-    Log "Scan de portas concluído para $host"
+    Write-Log "Geração de alto volume concluída. Total de $counter eventos gerados."
 }
 
-# Teste de conexões genéricas
-function Test-Generic {
-    param (
-        [string]$host
-    )
-    Log "Iniciando testes genéricos em $host"
-    
-    # Teste HTTP/HTTPS básico
-    try {
-        Log "Testando HTTP em $host"
-        $httpResult = Invoke-WebRequest -Uri "http://$host" -TimeoutSec 5 -ErrorAction Stop
-        Log "HTTP Response: $($httpResult.StatusCode)"
-    } catch {
-        Log "HTTP Error: $_"
-    }
-    
-    try {
-        Log "Testando HTTPS em $host"
-        $httpsResult = Invoke-WebRequest -Uri "https://$host" -TimeoutSec 5 -ErrorAction Stop
-        Log "HTTPS Response: $($httpsResult.StatusCode)"
-    } catch {
-        Log "HTTPS Error: $_"
-    }
-    
-    Log "Testes genéricos concluídos para $host"
-}
-
-# Execução principal
+# Função principal
 function Main {
-    Check-Dependencies
-    Log "Iniciando testes de honeypot"
-    
-    foreach ($honeypot in $HONEYPOTS) {
-        Log "Testando honeypot: $honeypot"
-        Test-SSH -host $honeypot
-        Test-MySQL -host $honeypot
-        Test-RDP -host $honeypot
-        Test-PortScan -host $honeypot
-        Test-Generic -host $honeypot
-        Log "Testes concluídos para $honeypot"
-        Start-Sleep -Seconds 5
+    # Criar diretório de logs se não existir
+    if (-not (Test-Path -Path "C:\temp")) {
+        New-Item -ItemType Directory -Path "C:\temp" -Force | Out-Null
     }
     
-    Log "Todos os testes foram concluídos"
-    Log "Verifique os logs no Splunk para confirmar a coleta"
-    Log "Log local salvo em: $LOG_FILE"
+    Write-Log "Iniciando simulação de atividades para geração de logs"
+    Initialize-EventLogSource
+    
+    # Gerar alto volume de logs
+    Generate-HighVolumeLogs
+    
+    Write-Log "Simulação concluída"
+    Write-Log "Verifique os logs do Windows Event Viewer e o arquivo local: $LOG_FILE"
 }
 
-# Executar o script principal
+# Executar
 Main
-    log "Verifique os logs no Splunk para confirmar a coleta"
-    log "Log local salvo em: $LOG_FILE"
-}
-
-main
-
-
 --------------------------------------------------------------------------------------
 
 #!/bin/bash
