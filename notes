@@ -1,507 +1,99 @@
-#!/bin/bash
+import streamlit as st
+from pytm import TM, Boundary, Actor, Server, Dataflow, Datastore
+import graphviz
 
-# Script refatorado para testar honeypots com implementação Netcat para MySQL
-# Objetivo: Verificar geração e coleta de logs no Splunk
+# Configuração da página
+st.set_page_config(page_title="Gerador de Modelo de Ameaças", layout="wide")
 
-## Configurações Globais
-readonly LOG_FILE="/tmp/honeypot_test_$(date +%Y%m%d_%H%M%S).log"
-readonly HONEYPOTS=("192.168.1.100" "192.168.1.101" "192.168.1.102")
-readonly SSH_USER="root"
-readonly RDP_USER="Administrator"
-readonly MYSQL_HANDSHAKE="\x00\x00\x00\x0a\x08\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
+# Título da aplicação
+st.title("🔐 Gerador Automático de Modelo de Ameaças")
 
-## Funções Auxiliares
+# Formulário principal
+with st.form("threat_model_form"):
+    st.header("1️⃣ Informe os Componentes do Sistema")
+    
+    col1, col2 = st.columns(2)
+    with col1:
+        app_name = st.text_input("Nome da Aplicação", help="Ex: Sistema de Pagamentos Online")
+        actor_name = st.text_input("Ator Principal", value="Usuário")
+        web_server = st.text_input("Servidor Web", value="API Gateway")
+    
+    with col2:
+        db_name = st.text_input("Banco de Dados", value="MySQL")
+        external_service = st.text_input("Serviço Externo (opcional)", value="Gateway de Pagamento")
+    
+    st.header("2️⃣ Defina os Fluxos de Dados")
+    flow1 = st.text_input("Fluxo 1 (Ator → Servidor)", value="Login HTTP")
+    flow2 = st.text_input("Fluxo 2 (Servidor → Banco)", value="Query SQL")
+    flow3 = st.text_input("Fluxo 3 (Servidor → Externo)", value="Chamada API")
+    
+    submit = st.form_submit_button("▶️ Gerar Diagrama")
 
-# Registrar atividades com timestamp
-log() {
-    local message="$1"
-    echo "[$(date '+%Y-%m-%d %H:%M:%S')] ${message}" | tee -a "${LOG_FILE}"
-}
-
-# Verificar dependências essenciais
-verify_dependencies() {
-    local required=("nmap" "nc" "ssh" "curl")
-    local missing=()
+# Processamento quando o formulário é enviado
+if submit:
+    # Inicializa o modelo pytm
+    tm = TM(app_name)
+    tm.description = "Gerado automaticamente via Streamlit"
     
-    for cmd in "${required[@]}"; do
-        if ! command -v "${cmd}" >/dev/null 2>&1; then
-            missing+=("${cmd}")
-        fi
-    done
-
-    if [ ${#missing[@]} -gt 0 ]; then
-        log "ERRO: Dependências ausentes: ${missing[*]}"
-        log "Instale com: sudo apt install ${missing[*]}"
-        exit 1
-    fi
-}
-
-## Funções de Teste
-
-# Teste de conexão SSH seguro
-test_ssh_connection() {
-    local host="$1"
-    log "Iniciando teste SSH em ${host}"
+    # Cria os boundaries
+    internet = Boundary("Internet")
+    sistema = Boundary("Sistema")
+    externo = Boundary("Externo")
     
-    # Tentativa de conexão básica
-    ssh -o BatchMode=yes -o ConnectTimeout=3 -o StrictHostKeyChecking=no "${SSH_USER}@${host}" exit 2>&1 | tee -a "${LOG_FILE}"
+    # Adiciona componentes
+    actor = Actor(actor_name)
+    actor.inBoundary = internet
     
-    # Teste com credenciais inválidas
-    local fake_passwords=("invalid_pass" "$(date +%s)" "honeypot_test")
-    for pass in "${fake_passwords[@]}"; do
-        sshpass -p "${pass}" ssh -o StrictHostKeyChecking=no -o ConnectTimeout=2 "${SSH_USER}@${host}" exit 2>&1 | tee -a "${LOG_FILE}"
-        sleep 1
-    done
+    server = Server(web_server)
+    server.inBoundary = sistema
     
-    log "Teste SSH concluído para ${host}"
-}
-
-# Teste MySQL via Netcat (implementação refatorada)
-test_mysql_service() {
-    local host="$1"
-    log "Iniciando análise MySQL em ${host} via Netcat"
+    database = Datastore(db_name)
+    database.inBoundary = sistema
     
-    # Verificação básica de porta
-    if nc -zv -w 3 "${host}" 3306 2>&1 | tee -a "${LOG_FILE}"; then
-        log "Porta MySQL (3306) acessível em ${host}"
-        
-        # Envio de handshake simulado
-        log "Enviando handshake MySQL simulado"
-        if echo -e "${MYSQL_HANDSHAKE}" | nc -w 3 "${host}" 3306 | head -c 20 | tee -a "${LOG_FILE}"; then
-            log "Resposta do serviço MySQL detectada"
-        else
-            log "Serviço não respondeu ao handshake"
-        fi
-    else
-        log "Porta MySQL (3306) inacessível em ${host}"
-    fi
+    external = Server(external_service)
+    external.inBoundary = externo
     
-    log "Análise MySQL concluída para ${host}"
-}
-
-# Teste RDP otimizado
-test_rdp_service() {
-    local host="$1"
-    log "Testando serviço RDP em ${host}"
+    # Cria os fluxos
+    Dataflow(actor, server, flow1)
+    Dataflow(server, database, flow2)
+    Dataflow(server, external, flow3)
     
-    if command -v nc >/dev/null; then
-        if nc -zv -w 3 "${host}" 3389 2>&1 | tee -a "${LOG_FILE}"; then
-            log "Porta RDP (3389) aberta em ${host}"
-            # Simulação básica de conexão
-            echo -e "\x03\x00\x00\x0b\x06\xe0\x00\x00\x00\x00\x00" | nc -w 2 "${host}" 3389 | head -c 10 | tee -a "${LOG_FILE}"
-        else
-            log "Porta RDP (3389) fechada em ${host}"
-        fi
-    fi
+    # Gera o diagrama usando graphviz
+    st.header("🎨 Diagrama Gerado Automaticamente")
     
-    log "Teste RDP concluído para ${host}"
-}
-
-# Varredura de portas com Nmap
-perform_port_scan() {
-    local host="$1"
-    log "Iniciando varredura Nmap em ${host}"
+    # Cria o objeto graphviz
+    dot = graphviz.Digraph()
+    dot.attr(rankdir='LR')
     
-    # Scan rápido de portas essenciais
-    nmap -T3 --max-retries 1 --max-rtt-timeout 500ms -p 21,22,80,443,3389,3306 "${host}" 2>&1 | tee -a "${LOG_FILE}"
+    # Adiciona nós e arestas
+    with dot.subgraph(name='cluster_internet') as c:
+        c.attr(label='Internet')
+        c.node(actor.name, shape='egg')
     
-    log "Varredura Nmap concluída para ${host}"
-}
-
-# Testes genéricos de rede
-test_network_services() {
-    local host="$1"
-    log "Iniciando testes genéricos em ${host}"
+    with dot.subgraph(name='cluster_sistema') as c:
+        c.attr(label='Sistema')
+        c.node(server.name, shape='box')
+        c.node(database.name, shape='cylinder')
     
-    # Teste de portas comuns
-    local common_ports=(21 22 80 443 8080 3389 3306)
-    for port in "${common_ports[@]}"; do
-        timeout 2 bash -c "echo > /dev/tcp/${host}/${port}" 2>&1 | tee -a "${LOG_FILE}"
-    done
+    with dot.subgraph(name='cluster_externo') as c:
+        c.attr(label='Externo')
+        c.node(external.name, shape='box')
     
-    # Testes HTTP/S básicos
-    curl -sI --connect-timeout 3 "http://${host}" 2>&1 | tee -a "${LOG_FILE}"
-    curl -sIk --connect-timeout 3 "https://${host}" 2>&1 | tee -a "${LOG_FILE}"
+    dot.edge(actor.name, server.name, label=flow1)
+    dot.edge(server.name, database.name, label=flow2)
+    dot.edge(server.name, external.name, label=flow3)
     
-    log "Testes genéricos concluídos para ${host}"
-}
-
-## Execução Principal
-
-main() {
-    verify_dependencies
-    log "Início dos testes de honeypot"
+    # Exibe o diagrama
+    st.graphviz_chart(dot)
     
-    for target in "${HONEYPOTS[@]}"; do
-        log "Iniciando testes no host: ${target}"
-        
-        test_ssh_connection "${target}"
-        test_mysql_service "${target}"
-        test_rdp_service "${target}"
-        perform_port_scan "${target}"
-        test_network_services "${target}"
-        
-        log "Testes concluídos para ${target}"
-        sleep $((RANDOM % 4 + 1))  # Intervalo aleatório entre 1-5 segundos
-    done
+    # Botão de download
+    dot.render('threat_model', format='png', cleanup=True)
+    with open("threat_model.png", "rb") as file:
+        st.download_button(
+            label="📥 Baixar Diagrama",
+            data=file,
+            file_name="threat_model.png",
+            mime="image/png"
+        )
     
-    log "Todos os testes foram finalizados"
-    log "Arquivo de log disponível em: ${LOG_FILE}"
-    log "Verifique os logs no Splunk para validação"
-}
-
-main
-
-
----------------------------------------------------------------------------
-
-<#
-.SYNOPSIS
-Script para gerar uma grande quantidade de logs em Windows para testar sistemas de monitoramento como Splunk.
-
-.DESCRIPTION
-Este script simula atividades suspeitas/maliciosas usando apenas recursos nativos do Windows,
-gerando diversos tipos de logs sem a necessidade de ferramentas externas.
-#>
-
-# Configurações
-$LOG_FILE = "C:\temp\honeypot_test_$(Get-Date -Format 'yyyyMMdd_HHmmss').log"
-$EVENT_LOG_SOURCE = "Honeypot-Test"
-$TEST_DURATION_MINUTES = 5  # Duração total dos testes
-$HIGH_VOLUME_INTERVAL_SECONDS = 1  # Intervalo para geração de alto volume
-
-# Função para registrar atividades
-function Write-Log {
-    param (
-        [string]$message,
-        [string]$level = "INFO"
-    )
-    $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
-    $logEntry = "[$timestamp] [$level] $message"
-    Write-Output $logEntry | Out-File -FilePath $LOG_FILE -Append -Encoding utf8
-    Write-Host $logEntry -ForegroundColor $(if ($level -eq "ERROR") { "Red" } elseif ($level -eq "WARNING") { "Yellow" } else { "White" })
-}
-
-# Criar fonte de log de eventos se não existir
-function Initialize-EventLogSource {
-    try {
-        if (-not [System.Diagnostics.EventLog]::SourceExists($EVENT_LOG_SOURCE)) {
-            New-EventLog -LogName "Application" -Source $EVENT_LOG_SOURCE
-            Write-Log "Fonte de log de eventos criada: $EVENT_LOG_SOURCE"
-        }
-    } catch {
-        Write-Log "Erro ao criar fonte de log de eventos: $_" -level "ERROR"
-    }
-}
-
-# Gerar eventos de log do Windows
-function Generate-EventLogs {
-    $eventTypes = @("Information", "Warning", "Error")
-    $eventIDs = @(1000..1099)  # Faixa de IDs de evento
-    $messages = @(
-        "Tentativa de acesso não autorizado",
-        "Falha na autenticação",
-        "Acesso negado",
-        "Tentativa de alteração de permissões",
-        "Processo suspeito iniciado",
-        "Alteração na configuração de segurança",
-        "Tentativa de acesso a recurso restrito",
-        "Comando potencialmente malicioso detectado",
-        "Padrão de tráfego anormal detectado",
-        "Variação na atividade do sistema"
-    )
-
-    $eventType = Get-Random -InputObject $eventTypes
-    $eventID = Get-Random -InputObject $eventIDs
-    $message = Get-Random -InputObject $messages
-    
-    try {
-        Write-EventLog -LogName "Application" -Source $EVENT_LOG_SOURCE -EntryType $eventType -EventID $eventID -Message $message
-        Write-Log "Evento gerado: ID=$eventID, Tipo=$eventType, Mensagem=$message"
-    } catch {
-        Write-Log "Erro ao gerar evento: $_" -level "ERROR"
-    }
-}
-
-# Simular tentativas de acesso a arquivos
-function Simulate-FileAccess {
-    $targetFolders = @(
-        "C:\Windows\System32",
-        "C:\Program Files",
-        "C:\Users\Public",
-        "C:\Temp",
-        "C:\inetpub"
-    )
-    
-    $actions = @("Read", "Write", "Delete", "Modify")
-    $fileTypes = @("*.exe", "*.dll", "*.config", "*.log", "*.bat")
-    
-    $folder = Get-Random -InputObject $targetFolders
-    $action = Get-Random -InputObject $actions
-    $fileType = Get-Random -InputObject $fileTypes
-    
-    try {
-        # Tentar listar arquivos (simula acesso)
-        $files = Get-ChildItem -Path $folder -Filter $fileType -ErrorAction Stop | Select-Object -First 3
-        $fileList = $files -join ", "
-        Write-Log "Simulando $action acesso em $folder para arquivos $fileType. Encontrados: $fileList"
-    } catch {
-        Write-Log "Falha ao acessar $folder: $_" -level "WARNING"
-    }
-}
-
-# Simular atividades de rede
-function Simulate-NetworkActivity {
-    $ports = @(80, 443, 22, 3389, 445, 21, 23, 3306, 8080)
-    $methods = @("GET", "POST", "PUT", "DELETE", "CONNECT")
-    $urls = @(
-        "http://example.com/admin",
-        "https://test.com/login.php",
-        "http://internal/api/v1/users",
-        "https://secure.com/config.xml",
-        "http://test.local/backup.zip"
-    )
-    
-    $port = Get-Random -InputObject $ports
-    $method = Get-Random -InputObject $methods
-    $url = Get-Random -InputObject $urls
-    
-    # Simular tentativa de conexão
-    try {
-        $test = Test-NetConnection -ComputerName "example.com" -Port $port -InformationLevel Quiet -WarningAction SilentlyContinue
-        Write-Log "Tentativa de conexão simulada: Porta $port via $method para $url - Sucesso: $test"
-    } catch {
-        Write-Log "Falha na conexão simulada: Porta $port via $method para $url - Erro: $_" -level "WARNING"
-    }
-}
-
-# Simular execução de processos suspeitos
-function Simulate-SuspiciousProcesses {
-    $processNames = @(
-        "powershell.exe -EncodedCommand",
-        "cmd.exe /c whoami",
-        "wmic process get",
-        "net user hacker /add",
-        "schtasks /create",
-        "reg add HKLM\Software\Microsoft\Windows\CurrentVersion\Run",
-        "netstat -ano",
-        "systeminfo",
-        "nslookup example.com",
-        "certutil -urlcache -split -f"
-    )
-    
-    $process = Get-Random -InputObject $processNames
-    
-    # Registrar a tentativa sem realmente executar comandos perigosos
-    Write-Log "Simulação de execução de processo suspeito: $process" -level "WARNING"
-}
-
-# Simular tentativas de login
-function Simulate-LoginAttempts {
-    $usernames = @(
-        "admin",
-        "administrator",
-        "root",
-        "user",
-        "test",
-        "backup",
-        "sqladmin",
-        "guest"
-    )
-    
-    $sources = @(
-        "192.168.1.100",
-        "10.0.0.15",
-        "172.16.0.23",
-        "45.33.12.78",
-        "internal-pc",
-        "unknown-source"
-    )
-    
-    $username = Get-Random -InputObject $usernames
-    $source = Get-Random -InputObject $sources
-    
-    Write-Log "Tentativa de login falha para usuário: $username de $source" -level "WARNING"
-}
-
-# Gerar alto volume de logs
-function Generate-HighVolumeLogs {
-    $startTime = Get-Date
-    $endTime = $startTime.AddMinutes($TEST_DURATION_MINUTES)
-    $counter = 0
-    
-    Write-Log "Iniciando geração de alto volume de logs por $TEST_DURATION_MINUTES minutos..."
-    
-    while ((Get-Date) -lt $endTime) {
-        $counter++
-        
-        # Alternar entre diferentes tipos de geração de logs
-        $activityType = Get-Random -Minimum 1 -Maximum 5
-        switch ($activityType) {
-            1 { Generate-EventLogs }
-            2 { Simulate-FileAccess }
-            3 { Simulate-NetworkActivity }
-            4 { Simulate-SuspiciousProcesses }
-            5 { Simulate-LoginAttempts }
-        }
-        
-        # Progresso
-        if ($counter % 10 -eq 0) {
-            $percentComplete = [math]::Round((((Get-Date) - $startTime).TotalSeconds / ($TEST_DURATION_MINUTES * 60)) * 100, 2)
-            Write-Log "Progresso: $percentComplete% ($counter eventos gerados)"
-        }
-        
-        Start-Sleep -Seconds $HIGH_VOLUME_INTERVAL_SECONDS
-    }
-    
-    Write-Log "Geração de alto volume concluída. Total de $counter eventos gerados."
-}
-
-# Função principal
-function Main {
-    # Criar diretório de logs se não existir
-    if (-not (Test-Path -Path "C:\temp")) {
-        New-Item -ItemType Directory -Path "C:\temp" -Force | Out-Null
-    }
-    
-    Write-Log "Iniciando simulação de atividades para geração de logs"
-    Initialize-EventLogSource
-    
-    # Gerar alto volume de logs
-    Generate-HighVolumeLogs
-    
-    Write-Log "Simulação concluída"
-    Write-Log "Verifique os logs do Windows Event Viewer e o arquivo local: $LOG_FILE"
-}
-
-# Executar
-Main
---------------------------------------------------------------------------------------
-
-#!/bin/bash
-
-# Script para testar honeypots simulando atividades suspeitas (não maliciosas)
-# Objetivo: Verificar se os logs estão sendo gerados e coletados pelo Splunk
-
-# Configurações
-LOG_FILE="/tmp/honeypot_test_$(date +%Y%m%d_%H%M%S).log"
-HONEYPOTS=("192.168.1.100" "192.168.1.101" "192.168.1.102")  # Substitua pelos IPs dos seus honeypots
-SSH_USER="root"
-MYSQL_USER="admin"
-RDP_USER="Administrator"
-
-# Função para registrar atividades
-log() {
-    echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" | tee -a "$LOG_FILE"
-}
-
-# Verificar dependências (versão simplificada)
-check_dependencies() {
-    local deps=("nmap" "nc" "curl" "ssh" "mysql")
-    for dep in "${deps[@]}"; do
-        if ! command -v "$dep" >/dev/null 2>&1; then
-            log "ERRO: $dep não instalado. Instale com: sudo apt install $dep"
-            exit 1
-        fi
-    done
-}
-
-# Teste de conexão SSH (versão discreta)
-test_ssh() {
-    local host=$1
-    log "Iniciando teste SSH em $host"
-    
-    # Tentativas de login discretas
-    local passwords=("invalidpass" "$(date +%s)" "testing123")
-    
-    for pass in "${passwords[@]}"; do
-        log "Testando credencial SSH: $SSH_USER/$pass"
-        sshpass -p "$pass" ssh -o StrictHostKeyChecking=no \
-                -o ConnectTimeout=3 \
-                -o PreferredAuthentications=password \
-                "$SSH_USER@$host" exit 2>&1 | tee -a "$LOG_FILE"
-    done
-    
-    # Comandos SSH básicos (se conseguir conectar)
-    log "Testando comando SSH básico"
-    ssh -o BatchMode=yes -o ConnectTimeout=3 "$SSH_USER@$host" "whoami; id" 2>&1 | tee -a "$LOG_FILE"
-    
-    log "Teste SSH concluído para $host"
-}
-
-# Teste de conexão MySQL (versão segura)
-test_mysql() {
-    local host=$1
-    log "Iniciando teste MySQL em $host"
-    
-    # Tentativas de conexão não intrusivas
-    local test_queries=(
-        "SELECT version()" 
-        "SHOW DATABASES" 
-        "SELECT user FROM mysql.user LIMIT 1"
-    )
-    
-    for query in "${test_queries[@]}"; do
-        log "Executando query: $query"
-        mysql -h "$host" -u "$MYSQL_USER" -p"invalidpassword" -e "$query" 2>&1 | tee -a "$LOG_FILE"
-        sleep 1
-    done
-    
-    log "Teste MySQL concluído para $host"
-}
-
-# Teste de port scanning (versão otimizada)
-test_nmap() {
-    local host=$1
-    log "Iniciando scan Nmap em $host (modo discreto)"
-    
-    # Scan rápido e discreto
-    nmap -T3 --max-retries 1 --max-rtt-timeout 500ms "$host" 2>&1 | tee -a "$LOG_FILE"
-    
-    # Verificação apenas de portas específicas
-    nmap -T3 -p 21,22,80,443,3389,3306 "$host" 2>&1 | tee -a "$LOG_FILE"
-    
-    log "Teste Nmap concluído para $host"
-}
-
-# Teste de conexões genéricas
-test_generic() {
-    local host=$1
-    log "Iniciando testes genéricos em $host"
-    
-    # Teste de portas com timeout reduzido
-    local ports=(21 22 80 443 3389 3306 8080)
-    for port in "${ports[@]}"; do
-        log "Testando porta $port"
-        timeout 2 bash -c "echo > /dev/tcp/$host/$port" 2>&1 | tee -a "$LOG_FILE"
-    done
-    
-    # Testes HTTP/S
-    log "Testando requisições web"
-    curl -sSI --connect-timeout 3 "http://$host" 2>&1 | tee -a "$LOG_FILE"
-    curl -sSIk --connect-timeout 3 "https://$host" 2>&1 | tee -a "$LOG_FILE"
-    
-    log "Testes genéricos concluídos para $host"
-}
-
-# Execução principal
-main() {
-    check_dependencies
-    log "Iniciando testes de honeypot (modo discreto)"
-    
-    for honeypot in "${HONEYPOTS[@]}"; do
-        log "Testando honeypot: $honeypot"
-        test_ssh "$honeypot"
-        test_mysql "$honeypot"
-        test_nmap "$honeypot"
-        test_generic "$honeypot"
-        log "Testes concluídos para $honeypot"
-        sleep $((RANDOM % 5 + 1))  # Intervalo aleatório entre 1-5 segundos
-    done
-    
-    log "Todos os testes foram concluídos"
-    log "Verifique os logs no Splunk para confirmar a coleta"
-    log "Log local salvo em: $LOG_FILE"
-}
-
-main
+    st.success("✅ Modelo gerado com sucesso!")
