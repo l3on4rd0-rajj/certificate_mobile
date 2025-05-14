@@ -1,99 +1,54 @@
-import streamlit as st
-from pytm import TM, Boundary, Actor, Server, Dataflow, Datastore
-import graphviz
-
-# Configuração da página
-st.set_page_config(page_title="Gerador de Modelo de Ameaças", layout="wide")
-
-# Título da aplicação
-st.title("🔐 Gerador Automático de Modelo de Ameaças")
-
-# Formulário principal
-with st.form("threat_model_form"):
-    st.header("1️⃣ Informe os Componentes do Sistema")
-    
-    col1, col2 = st.columns(2)
-    with col1:
-        app_name = st.text_input("Nome da Aplicação", help="Ex: Sistema de Pagamentos Online")
-        actor_name = st.text_input("Ator Principal", value="Usuário")
-        web_server = st.text_input("Servidor Web", value="API Gateway")
-    
-    with col2:
-        db_name = st.text_input("Banco de Dados", value="MySQL")
-        external_service = st.text_input("Serviço Externo (opcional)", value="Gateway de Pagamento")
-    
-    st.header("2️⃣ Defina os Fluxos de Dados")
-    flow1 = st.text_input("Fluxo 1 (Ator → Servidor)", value="Login HTTP")
-    flow2 = st.text_input("Fluxo 2 (Servidor → Banco)", value="Query SQL")
-    flow3 = st.text_input("Fluxo 3 (Servidor → Externo)", value="Chamada API")
-    
-    submit = st.form_submit_button("▶️ Gerar Diagrama")
-
-# Processamento quando o formulário é enviado
-if submit:
-    # Inicializa o modelo pytm
-    tm = TM(app_name)
-    tm.description = "Gerado automaticamente via Streamlit"
-    
-    # Cria os boundaries
-    internet = Boundary("Internet")
-    sistema = Boundary("Sistema")
-    externo = Boundary("Externo")
-    
-    # Adiciona componentes
-    actor = Actor(actor_name)
-    actor.inBoundary = internet
-    
-    server = Server(web_server)
-    server.inBoundary = sistema
-    
-    database = Datastore(db_name)
-    database.inBoundary = sistema
-    
-    external = Server(external_service)
-    external.inBoundary = externo
-    
-    # Cria os fluxos
-    Dataflow(actor, server, flow1)
-    Dataflow(server, database, flow2)
-    Dataflow(server, external, flow3)
-    
-    # Gera o diagrama usando graphviz
-    st.header("🎨 Diagrama Gerado Automaticamente")
-    
-    # Cria o objeto graphviz
-    dot = graphviz.Digraph()
-    dot.attr(rankdir='LR')
-    
-    # Adiciona nós e arestas
-    with dot.subgraph(name='cluster_internet') as c:
-        c.attr(label='Internet')
-        c.node(actor.name, shape='egg')
-    
-    with dot.subgraph(name='cluster_sistema') as c:
-        c.attr(label='Sistema')
-        c.node(server.name, shape='box')
-        c.node(database.name, shape='cylinder')
-    
-    with dot.subgraph(name='cluster_externo') as c:
-        c.attr(label='Externo')
-        c.node(external.name, shape='box')
-    
-    dot.edge(actor.name, server.name, label=flow1)
-    dot.edge(server.name, database.name, label=flow2)
-    dot.edge(server.name, external.name, label=flow3)
-    
-    # Exibe o diagrama
-    st.graphviz_chart(dot)
-    
-    # Botão de download
-    dot.render('threat_model', format='png', cleanup=True)
-    with open("threat_model.png", "rb") as file:
-        st.download_button(
-            label="📥 Baixar Diagrama",
-            data=file,
-            file_name="threat_model.png",
-            mime="image/png"
-        )
-    
-    st.success("✅ Modelo gerado com sucesso!")
+Tabela 1: Threat Actors (Atores de Ameaça)
+ID	Descrição
+TA01	Dados não criptografados em trânsito
+TA02	Interceptação de dados (Man-in-the-Middle)
+TA03	APIs expostas sem autenticação adequada
+TA04	QR Code Tampering (Alteração maliciosa)
+TA05	Replay Attacks (Reutilização do QR Code)
+TA06	Injeção de QR Codes falsos
+TA07	QR Code sem expiração definida
+TA08	Webhook Spoofing (Falsificação)
+TA09	Replay de Webhooks
+TA10	Perda de Webhooks
+TA11	Dados sensíveis em trânsito (Webhooks)
+TA12	Falta de validação do payload (Webhooks)
+TA13	Logs contendo informações sensíveis
+Tabela 2: Security Controls (Mitigações)
+ID	Descrição
+C01	Validar certificados digitais (TLS/MTLS)
+C02	Autenticação mútua (mTLS)
+C03	Uso de TLS 1.2+
+C04	Implementar Nonce (valores únicos em QR Codes)
+C05	Tempo de vida curto para QR Codes
+C06	Assinatura digital no QR Code
+C07	Criptografia de dados sensíveis em trânsito
+C08	Mecanismo de confirmação de recebimento (Webhooks)
+C09	Criptografar dados sensíveis em repouso
+C10	Validação de payload (Webhooks)
+C11	Logs sanitizados (sem dados sensíveis)
+Tabela 3: Correlação por Etapa do Fluxo
+1. Solicitação do QR Code
+Ameaça	Mitigações Aplicáveis
+TA03 (APIs expostas)	C01, C02 (mTLS + validação de certificados)
+TA01 (Dados não criptografados)	C03 (TLS 1.2+)
+2. Exibição do QR Code
+Ameaça	Mitigações Aplicáveis
+TA04 (QR Code Tampering)	C06 (Assinatura digital)
+TA05 (Replay Attacks)	C04 (Nonce), C05 (Expiração curta)
+TA06 (Injeção de QR Code)	C06 (Assinatura digital)
+TA07 (QR Code sem expiração)	C05 (Tempo de vida curto)
+3. Leitura do QR Code
+Ameaça	Mitigações Aplicáveis
+TA02 (MITM)	C01, C02, C03 (TLS + mTLS)
+TA01 (Dados não criptografados)	C07 (Criptografia em trânsito)
+4. Solicitação de Pagamento
+Ameaça	Mitigações Aplicáveis
+TA03 (APIs expostas)	C01, C02 (mTLS)
+TA11 (Dados sensíveis em trânsito)	C07 (Criptografia)
+5. Resposta do Pagamento (Webhooks)
+Ameaça	Mitigações Aplicáveis
+TA08 (Webhook Spoofing)	C10 (Validação de payload)
+TA09 (Replay de Webhooks)	C04 (Nonce), C08 (Confirmação)
+TA10 (Perda de Webhooks)	C08 (Mecanismo de confirmação)
+TA12 (Falta de validação)	C10 (Validação de payload)
+TA13 (Logs sensíveis)	C11 (Sanitização de logs)
