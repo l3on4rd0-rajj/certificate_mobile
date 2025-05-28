@@ -1,1 +1,32 @@
 
+Threat Modeling – Taxa de Serviço / BKO
+🧩 Ativos (Assets)
+ID	Ativo	Descrição
+A01	Arquivo CSV	Contém dados sensíveis de cobrança (valor, ID afiliação, moeda, etc.)
+A02	JOB de Service Charge	Processo de automatização de carregamento de dados
+A03	Advice/Analítico	Banco de dados com rastreabilidade e lógica de agrupamento
+A04	Core Table	Dados consolidados de ajustes financeiros
+A05	ERP	Sistema final que consome os dados ajustados
+A06	Serviço de Upload (BKO)	Interface responsável pelo recebimento dos arquivos
+A07	Perfis e Autenticação (FI, PE)	Autorização de usuários para envio e aprovação de ajustes
+
+⚠️ Ameaças (Threats)
+ID	Ameaça	Ativos Alvo	Risco Potencial
+T01	Upload de arquivos CSV manipulados	A01, A06	Injeção de dados inválidos ou maliciosos nos sistemas de back-end
+T02	Vazamento de dados sensíveis	A01, A03	Dados de afiliação, valores e identificadores expostos externamente
+T03	Escalada de privilégios por usuários	A07	Usuários não autorizados aprovando ou modificando ajustes
+T04	Alteração não rastreável de dados	A03	Falta de traceability compromete auditoria de ajustes
+T05	Job mal configurado gerando inconsistência	A02	Dados financeiros incorretos enviados ao ERP
+T06	Integração mal autenticada com sistemas externos	A05	Sistemas como ERP recebendo dados de fontes não confiáveis
+T07	Negação de Serviço via carga excessiva (DoS)	A06, A02	Envio de arquivos com >100mil registros simultaneamente causando lentidão
+
+🛡️ Controles / Mitigações (Controls)
+ID	Controle / Mitigação	Ameaças Mitigadas
+C01	Validação de estrutura e conteúdo dos arquivos CSV no upload	T01, T05
+C02	Criptografia em trânsito e em repouso dos dados sensíveis	T02
+C03	RBAC (controle de acesso baseado em função) com logs de auditoria	T03, T04
+C04	Logs e versionamento de alterações em Advice e Core Table	T04
+C05	Validação cruzada de dados no JOB com verificação automática	T05
+C06	Autenticação mútua entre sistemas (ex: API Key + Certificados)	T06
+C07	Limite de linhas e fila de processamento por lote com alertas	T07
+C08	Revalidação de perfis para tipos de ajuste e afiliação bloqueada	T03
