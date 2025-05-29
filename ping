@@ -1,40 +1,42 @@
-@echo off
-setlocal
+import ipaddress
+import subprocess
+import platform
 
-REM Verifica se os parâmetros foram fornecidos
-if "%~1"=="" (
-    echo Uso: ping_subrede.bat [IP_BASE] [CIDR]
-    echo Exemplo: ping_subrede.bat 192.168.1.0 24
-    exit /b
-)
+def ping_host(ip):
+    """Executa ping em um único IP e retorna True se estiver ativo."""
+    param = "-n" if platform.system().lower() == "windows" else "-c"
+    try:
+        result = subprocess.run(["ping", param, "1", str(ip)],
+                                stdout=subprocess.DEVNULL,
+                                stderr=subprocess.DEVNULL)
+        return result.returncode == 0
+    except Exception as e:
+        print(f"Erro ao pingar {ip}: {e}")
+        return False
 
-if "%~2"=="" (
-    echo ERRO: Voce deve fornecer o CIDR (ex: 24).
-    exit /b
-)
+def scan_subnet(rede_cidr):
+    """Faz ping em todos os IPs de uma rede CIDR."""
+    try:
+        rede = ipaddress.ip_network(rede_cidr, strict=False)
+    except ValueError as e:
+        print(f"Erro: {e}")
+        return
 
-set IP_REDE=%~1
-set CIDR=%~2
+    print(f"Escaneando rede: {rede_cidr}")
+    ativos = []
 
-REM Executa PowerShell embutido
-powershell -ExecutionPolicy Bypass -Command ^
-"$network = '%IP_REDE%'; $cidr = %CIDR%; $output = 'ativos.txt'; ^
-if (Test-Path $output) { Clear-Content $output }; ^
-$hosts = [math]::Pow(2, 32 - $cidr) - 2; ^
-$ipBytes = $network.Split('.') | ForEach-Object { [int]$_ }; ^
-$base = ($ipBytes[0] -shl 24) -bor ($ipBytes[1] -shl 16) -bor ($ipBytes[2] -shl 8) -bor $ipBytes[3]; ^
-for ($i = 1; $i -le $hosts; $i++) { ^
-  $ipInt = $base + $i; ^
-  $b1 = ($ipInt -shr 24) -band 255; ^
-  $b2 = ($ipInt -shr 16) -band 255; ^
-  $b3 = ($ipInt -shr 8) -band 255; ^
-  $b4 = $ipInt -band 255; ^
-  $ip = \"$b1.$b2.$b3.$b4\"; ^
-  Write-Host \"Testando $ip\"; ^
-  if (Test-Connection -ComputerName $ip -Count 1 -Quiet) { ^
-    Write-Host \"$ip está ativo!\" -ForegroundColor Green; ^
-    Add-Content -Path $output -Value $ip ^
-  } ^
-} ^
-Write-Host \"Finalizado. IPs ativos foram salvos em $output\" -ForegroundColor Cyan; ^
-pause"
+    for ip in rede.hosts():
+        print(f"Testando {ip}...", end="\r")
+        if ping_host(ip):
+            print(f"[+] {ip} ativo")
+            ativos.append(str(ip))
+
+    with open("ativos.txt", "w") as f:
+        f.write("\n".join(ativos))
+
+    print(f"\nVarredura concluída. {len(ativos)} IP(s) ativo(s) encontrados.")
+    print("Resultado salvo em 'ativos.txt'.")
+
+if __name__ == "__main__":
+    rede_input = input("Digite o IP com CIDR (ex: 192.168.1.0/24): ")
+    scan_subnet(rede_input)
