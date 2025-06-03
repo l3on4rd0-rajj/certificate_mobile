@@ -1,1 +1,88 @@
 
+Se a biblioteca que embarca o Tomcat permite sobrescrever a versão do Tomcat via configuração (ex: Maven/Gradle).
+
+Se há uma versão mais recente da própria biblioteca que já inclui um Tomcat atualizado.
+
+2. Substituição via Gerenciador de Dependências (Maven/Gradle)
+Se a biblioteca que embarca o Tomcat for uma dependência em um projeto Maven ou Gradle, você pode tentar forçar uma versão mais recente do Tomcat usando exclusão de dependência e incluindo a nova versão manualmente.
+
+Exemplo no Maven (pom.xml):
+xml
+<dependency>
+    <groupId>seu.grupo</groupId>
+    <artifactId>biblioteca-com-tomcat</artifactId>
+    <version>X.Y.Z</version>
+    <exclusions>
+        <exclusion>
+            <groupId>org.apache.tomcat.embed</groupId>
+            <artifactId>tomcat-embed-core</artifactId>
+        </exclusion>
+    </exclusions>
+</dependency>
+
+<!-- Inclui a versão mais recente do Tomcat Embedded -->
+<dependency>
+    <groupId>org.apache.tomcat.embed</groupId>
+    <artifactId>tomcat-embed-core</artifactId>
+    <version>10.1.20</version> <!-- Versão mais recente -->
+</dependency>
+Exemplo no Gradle (build.gradle):
+gradle
+dependencies {
+    implementation('seu.grupo:biblioteca-com-tomcat:X.Y.Z') {
+        exclude group: 'org.apache.tomcat.embed', module: 'tomcat-embed-core'
+    }
+    implementation 'org.apache.tomcat.embed:tomcat-embed-core:10.1.20'
+}
+⚠️ Atenção:
+
+Isso pode causar incompatibilidades se a biblioteca não for testada com a nova versão do Tomcat.
+
+Teste exaustivamente para garantir que não haja quebras.
+
+3. Classpath Manipulação (Shadow JAR / Uber JAR)
+Se a biblioteca é distribuída como um JAR e você tem controle sobre o classpath, você pode:
+
+Criar um JAR "shadow" (com o Tomcat atualizado) usando:
+
+Maven: maven-shade-plugin
+
+Gradle: shadowJar
+
+Garantir que a versão nova do Tomcat seja carregada antes da embarcada.
+
+Exemplo com maven-shade-plugin:
+xml
+<plugin>
+    <groupId>org.apache.maven.plugins</groupId>
+    <artifactId>maven-shade-plugin</artifactId>
+    <version>3.5.1</version>
+    <executions>
+        <execution>
+            <phase>package</phase>
+            <goals>
+                <goal>shade</goal>
+            </goals>
+            <configuration>
+                <relocations>
+                    <relocation>
+                        <pattern>org.apache.tomcat</pattern>
+                        <shadedPattern>seu.pacote.repackaged.org.apache.tomcat</shadedPattern>
+                    </relocation>
+                </relocations>
+            </configuration>
+        </execution>
+    </executions>
+</plugin>
+4. Solução Alternativa: Injeção em Tempo de Execução
+Se a biblioteca permite substituir o Tomcat Embedded programaticamente, você pode tentar:
+
+java
+// Exemplo em Spring Boot (se aplicável)
+@Bean
+public TomcatServletWebServerFactory tomcatFactory() {
+    TomcatServletWebServerFactory factory = new TomcatServletWebServerFactory();
+    factory.setProtocol("org.apache.coyote.http11.Http11Nio2Protocol");
+    return factory;
+}
+(Isso depende do framework utilizado.)
