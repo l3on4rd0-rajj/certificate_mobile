@@ -1,44 +1,53 @@
+import os
+import re
+import json
+import subprocess
 
-Padrões de Segurança de Pod
+# Caminho para o diretório do código C
+PROJECT_DIR = "./meu_projeto_c"
 
-Os Padrões de Segurança de Pod no Kubernetes definem essencialmente três níveis de segurança que você deseja aplicar. Esses níveis de segurança são (de forma um tanto confusa) chamados de 3 políticas na documentação oficial do Kubernetes. Esses níveis/políticas descrevem diferentes restrições para diferentes casos de uso. Vejamos quais são:
+# Regex para capturar includes
+INCLUDE_REGEX = re.compile(r'#include\s+[<"](.+?)[>"]')
 
-Privilegiado: Como o nome sugere, esta é a política mais flexível e irrestrita, com o nível mais amplo de permissão sendo concedido. Escalações de privilégios conhecidas são permitidas usando esta política, mas são intencionais. Caso de Uso: para uma política como esta, seria uma carga de trabalho em nível de sistema ou infraestrutura, gerenciada por um administrador de cluster confiável.
+# Armazena as bibliotecas encontradas
+libraries = {}
 
-Linha de Base: A política de linha de base foi projetada para facilitar a adoção. É uma política minimamente restritiva que impede escalações de privilégios conhecidas. Uma definição de pod padrão seria permitida usando esta política. Caso de Uso: Esta política é para operadores e desenvolvedores de aplicativos que trabalham em aplicativos não críticos. Alguns aplicativos precisarão de permissões de linha de base para serem executados como "Restritos", já que estas seriam muito restritivas.
+def get_library_info(libname):
+    """Tenta buscar informações da biblioteca usando pkg-config"""
+    try:
+        output = subprocess.check_output(['pkg-config', '--modversion', libname], stderr=subprocess.DEVNULL)
+        return output.decode().strip()
+    except subprocess.CalledProcessError:
+        return None
 
-Restrito: Como o nome sugere, esta política é altamente restritiva e segue as melhores práticas atuais de proteção de pods. No entanto, isso tem um custo de compatibilidade. Caso de Uso: Esta política seria usada no desenvolvimento e execução de aplicativos críticos para a segurança.
+def scan_c_files():
+    """Percorre arquivos C e coleta bibliotecas"""
+    for root, _, files in os.walk(PROJECT_DIR):
+        for file in files:
+            if file.endswith(('.c', '.h')):
+                path = os.path.join(root, file)
+                with open(path, 'r', errors='ignore') as f:
+                    content = f.read()
+                    includes = INCLUDE_REGEX.findall(content)
+                    for inc in includes:
+                        if inc not in libraries:
+                            version = get_library_info(inc.split('.')[0])
+                            libraries[inc] = {
+                                'name': inc,
+                                'version': version or 'unknown',
+                                'type': 'system' if '/' not in inc else 'local_or_third_party'
+                            }
 
-Ícone PSS
+def generate_sbom():
+    """Gera o SBOM em formato JSON"""
+    sbom = {
+        'project': os.path.basename(PROJECT_DIR),
+        'libraries': list(libraries.values())
+    }
+    with open('sbom.json', 'w') as f:
+        json.dump(sbom, f, indent=4)
+    print("SBOM gerado como 'sbom.json'.")
 
-Estes são os 3 níveis/políticas que podem ser aplicados, garantindo que os pods criados sigam um padrão predefinido para que você possa ficar tranquilo sabendo o que está sendo implantado em seu cluster. Mas como esses padrões são aplicados?
-
-Admissão de Segurança de Pods
-
-Na sala de Melhores Práticas de Segurança do Kubernetes, abordamos os 3 estágios pelos quais uma solicitação de API passa antes de ser aceita/persistente. Se você se lembra, o último desses 3 estágios são os "Controladores de Admissão". Verificações que são feitas em uma solicitação dependendo de quais foram habilitados. Foi mencionado que o Kubernetes possui muitos Controladores de Admissão integrados, um dos quais é o Controlador de Admissão PodSecurity. É esse controlador de admissão que aplica os padrões de segurança de pod descritos na seção anterior e é o que estamos mencionando quando discutimos PSA (Pod Security Admission). Se um PSS tiver sido definido, por exemplo, para um namespace, o Controlador de Admissão PodSecurity será acionado em qualquer solicitação de criação de pod nesse namespace. O que o Controlador de Admissão PodSecurity fará em caso de violação desse padrão dependerá do modo selecionado. Existem 3 modos:
-
-Aplicar: Se uma solicitação de criação de pod violar a política, a solicitação será rejeitada.
-
-Auditoria: Se uma solicitação de criação de pod violar a política, o evento será registrado no log de auditoria. No entanto, a solicitação será permitida e o pod será criado.
-
-Avisar: Se uma solicitação de criação de pod violar a política, um aviso será acionado para o usuário. No entanto, a solicitação será permitida e o pod será criado.
-
-PSA e PSS em um Cluster Kubernetes
-
-Agora que estabelecemos como eles funcionam, vamos dar uma olhada em como os aplicaríamos ao nosso cluster Kubernetes. Vamos considerar um caso de uso comum: temos uma aplicação não crítica em execução no "namespace-exemplo" e queremos garantir que todos os pods em execução nesse namespace estejam protegidos contra escalonamentos de privilégios conhecidos, negando todos os pods que não atendem a esses padrões. Para habilitar esses padrões de segurança de pod em nível de namespace, podemos usar rótulos. O Kubernetes define rótulos que você pode definir para determinar quais dos Padrões de Segurança de Pod predefinidos você deseja usar em um namespace e qual modo deseja usar. Aqui está a sintaxe do rótulo:
-
-pod-security.kubernetes.io/<MODE>=<LEVEL>
-
-Por exemplo, se você quiser definir um nível de base e aplicá-lo:
-
-pod-security.kubernetes.io/enforce=baseline
-
-Um rótulo opcional também pode ser incluído se você quiser fixar a versão da política que está sendo aplicada (ou auditada/avisada) àquela incluída em uma versão secundária do Kubernetes (ou na versão mais recente). Isso pode ser feito com:
-
-pod-security.kubernetes.io/enforce-version: v1.30
-
-Esse é o formato do rótulo, mas como aplicaríamos esse rótulo ao nosso "namespace-exemplo"? Podemos fazer isso usando um comando Kubectl.
-
-Observação: A opção dryrun não é essencial, mas é uma prática recomendada, pois permite verificar se todos os pods em execução no namespace que você está rotulando seriam admitidos com o padrão de segurança que você está aplicando. Basicamente, você está tentando evitar uma instância em que um pod de aplicativo neste namespace criado antes da reinicialização da rotulagem seja negado por não atender aos novos padrões de segurança rotulados. Se o comando dryrun retornar "<namespace> rotulado" sem nenhum aviso, isso significa que todos os pods em execução neste namespace serão admitidos usando os padrões de segurança que você está prestes a aplicar. O comando será então executado sem a flag dryrun para rotular o namespace.
-
-Kubectl label –dry
+if __name__ == "__main__":
+    scan_c_files()
+    generate_sbom()
