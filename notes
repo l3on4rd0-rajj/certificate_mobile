@@ -1,52 +1,39 @@
 import os
 import re
 import json
-import subprocess
 
-# Caminho para o diretório do código C
-PROJECT_DIR = "./meu_projeto_c"
+# Altere este caminho para o diretório onde está o seu projeto C
+PROJECT_DIR = r"C:\Users\SeuUsuario\projetos\meu_projeto_c"
 
-# Regex para capturar includes
 INCLUDE_REGEX = re.compile(r'#include\s+[<"](.+?)[>"]')
 
-# Armazena as bibliotecas encontradas
 libraries = {}
 
-def get_library_info(libname):
-    """Tenta buscar informações da biblioteca usando pkg-config"""
-    try:
-        output = subprocess.check_output(['pkg-config', '--modversion', libname], stderr=subprocess.DEVNULL)
-        return output.decode().strip()
-    except subprocess.CalledProcessError:
-        return None
-
 def scan_c_files():
-    """Percorre arquivos C e coleta bibliotecas"""
     for root, _, files in os.walk(PROJECT_DIR):
         for file in files:
             if file.endswith(('.c', '.h')):
-                path = os.path.join(root, file)
-                with open(path, 'r', errors='ignore') as f:
+                with open(os.path.join(root, file), 'r', errors='ignore') as f:
                     content = f.read()
                     includes = INCLUDE_REGEX.findall(content)
                     for inc in includes:
                         if inc not in libraries:
-                            version = get_library_info(inc.split('.')[0])
-                            libraries[inc] = {
-                                'name': inc,
-                                'version': version or 'unknown',
-                                'type': 'system' if '/' not in inc else 'local_or_third_party'
+                            lib_info = {
+                                "name": inc,
+                                "version": "unknown",
+                                "type": "local_or_system" if "/" not in inc else "project_or_third_party"
                             }
+                            libraries[inc] = lib_info
 
 def generate_sbom():
-    """Gera o SBOM em formato JSON"""
     sbom = {
-        'project': os.path.basename(PROJECT_DIR),
-        'libraries': list(libraries.values())
+        "project": os.path.basename(PROJECT_DIR),
+        "environment": "Windows",
+        "libraries": list(libraries.values())
     }
-    with open('sbom.json', 'w') as f:
+    with open("sbom_windows.json", "w") as f:
         json.dump(sbom, f, indent=4)
-    print("SBOM gerado como 'sbom.json'.")
+    print("✅ SBOM salvo como sbom_windows.json")
 
 if __name__ == "__main__":
     scan_c_files()
