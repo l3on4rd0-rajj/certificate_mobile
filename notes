@@ -3,73 +3,56 @@ import re
 import json
 import csv
 
-# Expressão regular para capturar apenas includes com <...> (bibliotecas externas)
 INCLUDE_REGEX = re.compile(r'#include\s+<(.+?)>')
 
-def get_includes_from_file(file_path):
-    includes = []
-    with open(file_path, 'r', errors='ignore') as f:
-        content = f.read()
-        includes = INCLUDE_REGEX.findall(content)
-    return includes
-
-def scan_c_project(project_dir):
+def scan_c_files(project_path):
     libraries = {}
-    for root, _, files in os.walk(project_dir):
+    for root, _, files in os.walk(project_path):
         for file in files:
-            if file.endswith(('.c', '.h', '.cpp', '.hpp')):
-                full_path = os.path.join(root, file)
-                includes = get_includes_from_file(full_path)
-                for inc in includes:
-                    if inc not in libraries:
-                        libraries[inc] = {
-                            "name": inc,
-                            "version": "unknown",
-                            "type": "system_or_third_party",
-                            "language": "C/C++"
-                        }
-    return libraries
+            if file.endswith(('.c', '.h')):
+                with open(os.path.join(root, file), 'r', errors='ignore') as f:
+                    content = f.read()
+                    includes = INCLUDE_REGEX.findall(content)
+                    for inc in includes:
+                        if inc not in libraries:
+                            libraries[inc] = {
+                                "name": inc,
+                                "version": "unknown",
+                                "type": "system"
+                            }
+    return list(libraries.values())
 
-def export_json(sbom_data, output_path):
-    with open(output_path, 'w', encoding='utf-8') as f:
-        json.dump(sbom_data, f, indent=4)
-    print(f"[+] SBOM exportado como JSON: {output_path}")
-
-def export_csv(sbom_data, output_path):
-    with open(output_path, 'w', newline='', encoding='utf-8') as csvfile:
-        fieldnames = ['name', 'version', 'type', 'language']
-        writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
-        writer.writeheader()
-        for lib in sbom_data['libraries']:
-            writer.writerow(lib)
-    print(f"[+] SBOM exportado como CSV: {output_path}")
-
-def main():
-    print("🔍 Gerador de SBOM para projetos C/C++ no Windows\n")
-    project_path = input("📂 Caminho do diretório do projeto: ").strip('"')
-    if not os.path.isdir(project_path):
-        print("❌ Caminho inválido. Verifique e tente novamente.")
-        return
-
-    output_format = input("📤 Deseja gerar o SBOM em JSON ou CSV? (json/csv): ").strip().lower()
-    if output_format not in ['json', 'csv']:
-        print("❌ Formato inválido. Use 'json' ou 'csv'.")
-        return
-
-    project_name = os.path.basename(project_path.rstrip("\\/"))
-    libraries = scan_c_project(project_path)
-
-    sbom_data = {
+def save_as_json(output_path, project_name, libraries):
+    sbom = {
         "project": project_name,
         "environment": "Windows",
-        "libraries": list(libraries.values())
+        "libraries": libraries
     }
+    with open(output_path, 'w') as f:
+        json.dump(sbom, f, indent=4)
+    print(f"✅ SBOM salvo como {output_path}")
 
-    if output_format == 'json':
-        export_json(sbom_data, os.path.join(project_path, "sbom.json"))
-    else:
-        export_csv(sbom_data, os.path.join(project_path, "sbom.csv"))
+def save_as_csv(output_path, libraries):
+    with open(output_path, 'w', newline='', encoding='utf-8') as f:
+        writer = csv.DictWriter(f, fieldnames=["name", "version", "type"])
+        writer.writeheader()
+        writer.writerows(libraries)
+    print(f"✅ SBOM salvo como {output_path}")
 
 if __name__ == "__main__":
-    main()
+    project_path = input("Informe o caminho do diretório do projeto: ").strip('"')
+    output_format = input("Deseja gerar o SBOM em JSON ou CSV? [json/csv]: ").strip().lower()
 
+    if not os.path.isdir(project_path):
+        print("❌ Caminho inválido.")
+        exit(1)
+
+    libraries = scan_c_files(project_path)
+    project_name = os.path.basename(project_path)
+
+    if output_format == "json":
+        save_as_json("sbom.json", project_name, libraries)
+    elif output_format == "csv":
+        save_as_csv("sbom.csv", libraries)
+    else:
+        print("❌ Formato inválido.")
