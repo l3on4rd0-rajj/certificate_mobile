@@ -2,76 +2,72 @@ import os
 import re
 import json
 import csv
+import subprocess
 
-PROJECT_DIR = input("Informe o caminho do diretório do projeto: ").strip()
-OUTPUT_FORMAT = input("Formato de saída (json/csv): ").strip().lower()
+# Regex para capturar apenas includes do tipo <...>
+INCLUDE_REGEX = re.compile(r'#include\s+<(.+?)>')
 
-# Expressões regulares para cada linguagem
-PATTERNS = {
-    "c_cpp": re.compile(r'#include\s+[<"](.+?)[>"]'),
-    "python": re.compile(r'^\s*(?:from|import)\s+([\w\.]+)', re.MULTILINE),
-    "java": re.compile(r'import\s+([\w\.]+);'),
-    "csharp": re.compile(r'using\s+([\w\.]+);')
-}
+# Dicionário para armazenar bibliotecas encontradas
+libraries = {}
 
-libraries = []
+def get_library_info(libname):
+    """Tenta buscar a versão da biblioteca via pkg-config"""
+    try:
+        output = subprocess.check_output(['pkg-config', '--modversion', libname], stderr=subprocess.DEVNULL)
+        return output.decode().strip()
+    except subprocess.CalledProcessError:
+        return None
 
-def detect_language_and_extract(path, content):
-    if path.endswith(('.c', '.h', '.cpp', '.hpp')):
-        lang = "C/C++"
-        matches = PATTERNS["c_cpp"].findall(content)
-    elif path.endswith('.py'):
-        lang = "Python"
-        matches = PATTERNS["python"].findall(content)
-    elif path.endswith('.java'):
-        lang = "Java"
-        matches = PATTERNS["java"].findall(content)
-    elif path.endswith('.cs'):
-        lang = "C#"
-        matches = PATTERNS["csharp"].findall(content)
-    else:
-        return
-
-    for lib in matches:
-        if not any(d["name"] == lib and d["language"] == lang for d in libraries):
-            libraries.append({
-                "name": lib,
-                "language": lang,
-                "version": "unknown",
-                "license": "unknown"
-            })
-
-def scan_project():
-    for root, _, files in os.walk(PROJECT_DIR):
+def scan_c_files(project_dir):
+    """Varre os arquivos .c e .h e extrai includes <...>"""
+    for root, _, files in os.walk(project_dir):
         for file in files:
-            path = os.path.join(root, file)
-            try:
-                with open(path, 'r', encoding='utf-8', errors='ignore') as f:
+            if file.endswith(('.c', '.h')):
+                path = os.path.join(root, file)
+                with open(path, 'r', errors='ignore') as f:
                     content = f.read()
-                    detect_language_and_extract(path, content)
-            except Exception as e:
-                print(f"Erro ao ler {path}: {e}")
+                    includes = INCLUDE_REGEX.findall(content)
+                    for inc in includes:
+                        if inc not in libraries:
+                            base_name = inc.split('/')[0].split('.')[0]
+                            version = get_library_info(base_name)
+                            libraries[inc] = {
+                                'name': inc,
+                                'version': version or 'unknown',
+                                'type': 'system_or_third_party'
+                            }
 
-def export_json():
+def generate_json_sbom(project_dir):
+    """Gera o SBOM em formato JSON"""
     sbom = {
-        "project": os.path.basename(PROJECT_DIR),
-        "environment": "multi-language",
-        "libraries": libraries
+        'project': os.path.basename(project_dir),
+        'environment': 'Windows',
+        'libraries': list(libraries.values())
     }
-    with open("sbom_multi.json", "w", encoding="utf-8") as f:
+    with open('sbom.json', 'w') as f:
         json.dump(sbom, f, indent=4)
-    print("✅ Exportado como sbom_multi.json")
+    print("✅ SBOM gerado como 'sbom.json'.")
 
-def export_csv():
-    with open("sbom_multi.csv", "w", newline='', encoding="utf-8") as f:
-        writer = csv.DictWriter(f, fieldnames=["name", "language", "version", "license"])
+def generate_csv_sbom():
+    """Gera o SBOM em formato CSV"""
+    with open('sbom.csv', 'w', newline='', encoding='utf-8') as f:
+        writer = csv.DictWriter(f, fieldnames=['name', 'version', 'type'])
         writer.writeheader()
-        writer.writerows(libraries)
-    print("✅ Exportado como sbom_multi.csv")
+        for lib in libraries.values():
+            writer.writerow(lib)
+    print("✅ SBOM gerado como 'sbom.csv'.")
 
 if __name__ == "__main__":
-    scan_project()
-    if OUTPUT_FORMAT == "csv":
-        export_csv()
+    project_path = input("Informe o caminho do diretório do projeto: ").strip()
+    output_format = input("Deseja gerar o SBOM em JSON ou CSV? [json/csv]: ").strip().lower()
+
+    if not os.path.isdir(project_path):
+        print("❌ Caminho inválido.")
+        exit(1)
+
+    scan_c_files(project_path)
+
+    if output_format == 'csv':
+        generate_csv_sbom()
     else:
-        export_json()
+        generate_json_sbom(project_path)
