@@ -1,40 +1,77 @@
 import os
 import re
 import json
+import csv
 
-# Altere este caminho para o diretório onde está o seu projeto C
-PROJECT_DIR = r"C:\Users\SeuUsuario\projetos\meu_projeto_c"
+PROJECT_DIR = input("Informe o caminho do diretório do projeto: ").strip()
+OUTPUT_FORMAT = input("Formato de saída (json/csv): ").strip().lower()
 
-INCLUDE_REGEX = re.compile(r'#include\s+[<"](.+?)[>"]')
+# Expressões regulares para cada linguagem
+PATTERNS = {
+    "c_cpp": re.compile(r'#include\s+[<"](.+?)[>"]'),
+    "python": re.compile(r'^\s*(?:from|import)\s+([\w\.]+)', re.MULTILINE),
+    "java": re.compile(r'import\s+([\w\.]+);'),
+    "csharp": re.compile(r'using\s+([\w\.]+);')
+}
 
-libraries = {}
+libraries = []
 
-def scan_c_files():
+def detect_language_and_extract(path, content):
+    if path.endswith(('.c', '.h', '.cpp', '.hpp')):
+        lang = "C/C++"
+        matches = PATTERNS["c_cpp"].findall(content)
+    elif path.endswith('.py'):
+        lang = "Python"
+        matches = PATTERNS["python"].findall(content)
+    elif path.endswith('.java'):
+        lang = "Java"
+        matches = PATTERNS["java"].findall(content)
+    elif path.endswith('.cs'):
+        lang = "C#"
+        matches = PATTERNS["csharp"].findall(content)
+    else:
+        return
+
+    for lib in matches:
+        if not any(d["name"] == lib and d["language"] == lang for d in libraries):
+            libraries.append({
+                "name": lib,
+                "language": lang,
+                "version": "unknown",
+                "license": "unknown"
+            })
+
+def scan_project():
     for root, _, files in os.walk(PROJECT_DIR):
         for file in files:
-            if file.endswith(('.c', '.h')):
-                with open(os.path.join(root, file), 'r', errors='ignore') as f:
+            path = os.path.join(root, file)
+            try:
+                with open(path, 'r', encoding='utf-8', errors='ignore') as f:
                     content = f.read()
-                    includes = INCLUDE_REGEX.findall(content)
-                    for inc in includes:
-                        if inc not in libraries:
-                            lib_info = {
-                                "name": inc,
-                                "version": "unknown",
-                                "type": "local_or_system" if "/" not in inc else "project_or_third_party"
-                            }
-                            libraries[inc] = lib_info
+                    detect_language_and_extract(path, content)
+            except Exception as e:
+                print(f"Erro ao ler {path}: {e}")
 
-def generate_sbom():
+def export_json():
     sbom = {
         "project": os.path.basename(PROJECT_DIR),
-        "environment": "Windows",
-        "libraries": list(libraries.values())
+        "environment": "multi-language",
+        "libraries": libraries
     }
-    with open("sbom_windows.json", "w") as f:
+    with open("sbom_multi.json", "w", encoding="utf-8") as f:
         json.dump(sbom, f, indent=4)
-    print("✅ SBOM salvo como sbom_windows.json")
+    print("✅ Exportado como sbom_multi.json")
+
+def export_csv():
+    with open("sbom_multi.csv", "w", newline='', encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=["name", "language", "version", "license"])
+        writer.writeheader()
+        writer.writerows(libraries)
+    print("✅ Exportado como sbom_multi.csv")
 
 if __name__ == "__main__":
-    scan_c_files()
-    generate_sbom()
+    scan_project()
+    if OUTPUT_FORMAT == "csv":
+        export_csv()
+    else:
+        export_json()
