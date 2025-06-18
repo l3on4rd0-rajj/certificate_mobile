@@ -1,5 +1,1 @@
-index=* "PSScriptPolicyTest_ewde3qnm.kwm.ps1"
-| table _time, user, host, file_name, process, CommandLine
 
-index=* sourcetype=Sysmon OR sourcetype=windows* "PSScriptPolicyTest_ewde3qnm.kwm.ps1"
-| stats earliest(_time) as first_seen by user, host, process
