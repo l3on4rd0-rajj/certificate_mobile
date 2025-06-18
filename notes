@@ -34,4 +34,3 @@ if __name__ == "__main__":
         print(f"❌ Erro: {e}")
     except Exception as e:
         print(f"❌ Erro inesperado: {e}")
-
