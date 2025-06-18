@@ -1,1 +1,37 @@
+def comparar_arquivos(orig, adulterado):
+    with open(orig, 'r', encoding='utf-8') as f1, open(adulterado, 'r', encoding='utf-8') as f2:
+        orig_lines = f1.readlines()
+        adulterado_lines = f2.readlines()
+
+    alteracoes = False
+
+    print("\n📘 Comparando arquivos...\n")
+
+    for i, (linha1, linha2) in enumerate(zip(orig_lines, adulterado_lines), 1):
+        if linha1.strip() != linha2.strip():
+            print(f"[Linha {i}] ⚠️ ALTERADA:\n  Original:   {linha1.strip()}\n  Adulterado: {linha2.strip()}\n")
+            alteracoes = True
+
+    if len(orig_lines) != len(adulterado_lines):
+        print("\n⚠️ Arquivos têm número de linhas diferentes:")
+        print(f"  Original:   {len(orig_lines)} linhas")
+        print(f"  Adulterado: {len(adulterado_lines)} linhas")
+        alteracoes = True
+
+    if not alteracoes:
+        print("✅ Nenhuma diferença encontrada entre os arquivos.")
+
+
+# 🔽 Entrada interativa
+if __name__ == "__main__":
+    print("🛠 Comparador de arquivos de CLP\n")
+    arquivo_original = input("📂 Caminho do arquivo original: ").strip()
+    arquivo_adulterado = input("📂 Caminho do arquivo adulterado: ").strip()
+    
+    try:
+        comparar_arquivos(arquivo_original, arquivo_adulterado)
+    except FileNotFoundError as e:
+        print(f"❌ Erro: {e}")
+    except Exception as e:
+        print(f"❌ Erro inesperado: {e}")
 
