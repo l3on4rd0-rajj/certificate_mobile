@@ -1,36 +1,51 @@
-def comparar_arquivos(orig, adulterado):
-    with open(orig, 'r', encoding='utf-8') as f1, open(adulterado, 'r', encoding='utf-8') as f2:
-        orig_lines = f1.readlines()
-        adulterado_lines = f2.readlines()
+ Processo java finaliza mais rápido que o grep espera
+O serviço pode terminar quase instantaneamente, então quando o grep ou tail -f inicia, o log já foi escrito.
 
-    alteracoes = False
+Resultado: o script espera algo que já passou, e o grep trava ou fica esperando.
 
-    print("\n📘 Comparando arquivos...\n")
+2. O log não contém a string que o grep espera
+Você está esperando algo como:
 
-    for i, (linha1, linha2) in enumerate(zip(orig_lines, adulterado_lines), 1):
-        if linha1.strip() != linha2.strip():
-            print(f"[Linha {i}] ⚠️ ALTERADA:\n  Original:   {linha1.strip()}\n  Adulterado: {linha2.strip()}\n")
-            alteracoes = True
+bash
+Copiar
+Editar
+grep -aE "(Finished synchronization.*|ERROR)"
+Mas esse serviço pode logar algo diferente (ex: "Terminated successfully" ao invés de "Finished synchronization").
 
-    if len(orig_lines) != len(adulterado_lines):
-        print("\n⚠️ Arquivos têm número de linhas diferentes:")
-        print(f"  Original:   {len(orig_lines)} linhas")
-        print(f"  Adulterado: {len(adulterado_lines)} linhas")
-        alteracoes = True
+🔎 Compare o conteúdo do temp.log entre os microserviços que funcionam e o que falha.
 
-    if not alteracoes:
-        print("✅ Nenhuma diferença encontrada entre os arquivos.")
+3. Esse microsserviço trava ou morre silenciosamente
+Ele pode estar com problemas internos (ex: problema de rede, credentials, token inválido).
 
+O processo morre antes mesmo de logar “Finished synchronization” — e o grep nunca encontra nada, ficando travado.
 
-# 🔽 Entrada interativa
-if __name__ == "__main__":
-    print("🛠 Comparador de arquivos de CLP\n")
-    arquivo_original = input("📂 Caminho do arquivo original: ").strip()
-    arquivo_adulterado = input("📂 Caminho do arquivo adulterado: ").strip()
-    
-    try:
-        comparar_arquivos(arquivo_original, arquivo_adulterado)
-    except FileNotFoundError as e:
-        print(f"❌ Erro: {e}")
-    except Exception as e:
-        print(f"❌ Erro inesperado: {e}")
+4. Problema de configuração ou path errado
+Verifique se os caminhos (bundle_base_path, JAR, mapping.json, etc.) estão corretos apenas nesse microserviço.
+
+Um cd errado, um sed malformado ou nome com espaço pode causar falha silenciosa.
+
+✅ Como depurar este caso específico
+Comente o kill $Jpid temporariamente
+Pra ver se o erro vem realmente do kill:
+
+bash
+Copiar
+Editar
+# kill $Jpid
+Adicione debug no temp.log
+Antes de qualquer grep, adicione:
+
+bash
+Copiar
+Editar
+echo "[DEBUG] Conteúdo do log após execução:"
+cat "$bundle_base_path/temp.log"
+Compare os logs entre os microsserviços
+Veja se o padrão de log realmente bate com o que o grep espera.
+
+🔁 Alternativa segura ao kill:
+bash
+Copiar
+Editar
+wait $Lpid
+ps -p $Jpid >/dev/null && kill $Jpid || echo "[INFO] Processo $Jpid já finalizado"
