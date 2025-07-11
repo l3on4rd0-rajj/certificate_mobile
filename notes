@@ -1,23 +1,24 @@
-
 import pandas as pd
 import requests
 from datetime import datetime
 
-# Caminho do arquivo Excel com colunas 'produto' e 'versao'
-excel_path = "caminho_para_sua_planilha.xlsx"
+# Caminho do arquivo Excel
+excel_path = "C:/Users/Leonardo/Documents/produtos.xlsx"  # <--- altere aqui conforme seu caso
 
-# Carregar a planilha
+print(f"📥 Lendo planilha: {excel_path}")
 df = pd.read_excel(excel_path)
 
-# Lista para armazenar os resultados
+print(f"📊 Total de registros: {len(df)}\n")
+
 resultados = []
 
-# Função para consultar a API do endoflife.date
 def verificar_suporte(produto, versao):
     url = f"https://endoflife.date/api/{produto}.json"
+    print(f"🔎 Consultando API: {url} ...")
     try:
         resp = requests.get(url, timeout=10)
         if resp.status_code != 200:
+            print(f"  ⚠ Produto '{produto}' não encontrado (HTTP {resp.status_code})")
             return {"status": "Produto não encontrado", "eol": None, "latest": None}
 
         ciclos = resp.json()
@@ -31,19 +32,27 @@ def verificar_suporte(produto, versao):
                 else:
                     ainda_em_suporte = True
                     eol_date = None
+
+                status = "✅ Em suporte" if ainda_em_suporte else "❌ EOL"
+                print(f"  ➤ Produto: {produto}, Versão: {versao}, Status: {status}, Última versão: {latest}, EOL: {eol_data}")
                 return {
-                    "status": "Em suporte" if ainda_em_suporte else "EOL",
+                    "status": status,
                     "eol": eol_date.strftime("%Y-%m-%d") if eol_date else "Sem EOL",
                     "latest": latest
                 }
-        return {"status": "Versão não encontrada", "eol": None, "latest": None}
-    except Exception as e:
-        return {"status": f"Erro: {e}", "eol": None, "latest": None}
 
-# Aplicar a verificação a cada linha
-for _, row in df.iterrows():
+        print(f"  ❓ Versão '{versao}' não encontrada para o produto '{produto}'")
+        return {"status": "Versão não encontrada", "eol": None, "latest": None}
+
+    except Exception as e:
+        print(f"  ⚠ Erro ao consultar '{produto}': {str(e)}")
+        return {"status": f"Erro: {str(e)}", "eol": None, "latest": None}
+
+# Processar cada linha
+for i, row in df.iterrows():
     produto = str(row["produto"]).strip().lower()
     versao = str(row["versao"]).strip()
+    print(f"\n🔄 [{i+1}/{len(df)}] Verificando: {produto} {versao}")
     resultado = verificar_suporte(produto, versao)
     resultados.append({
         "produto": produto,
@@ -53,7 +62,9 @@ for _, row in df.iterrows():
         "ultima_versao": resultado["latest"]
     })
 
-# Criar DataFrame e salvar resultado
+# Salvar resultado
+output_file = "resultado_endoflife.xlsx"
 df_resultado = pd.DataFrame(resultados)
-df_resultado.to_excel("resultado_endoflife.xlsx", index=False)
-print("✅ Resultado salvo como 'resultado_endoflife.xlsx'")
+df_resultado.to_excel(output_file, index=False)
+
+print(f"\n✅ Concluído! Resultado salvo como '{output_file}'")
