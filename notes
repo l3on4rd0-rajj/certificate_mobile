@@ -1,1 +1,131 @@
 
+import requests
+from requests.auth import HTTPBasicAuth
+import openpyxl
+from openpyxl.styles import Font
+import urllib3
+import time
+
+# ==== CONFIGURAÇÕES ====
+BASE_URL = ""
+USERNAME = ""
+PASSWORD = ""
+
+HEADERS = {
+    "accept": "application/json"
+}
+
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
+# ==== FUNÇÕES ====
+def get_applications():
+    url = f"{BASE_URL}/api/v2/applications"
+    try:
+        response = requests.get(url, headers=HEADERS, auth=HTTPBasicAuth(USERNAME, PASSWORD), verify=False)
+        response.raise_for_status()
+        return response.json().get("applications", [])
+    except requests.RequestException as e:
+        print(f"Erro ao buscar aplicações: {e}")
+        return []
+
+def get_report(application_id):
+    url = f"{BASE_URL}/api/v2/reports/applications/{application_id}"
+    try:
+        response = requests.get(url, headers=HEADERS, auth=HTTPBasicAuth(USERNAME, PASSWORD), verify=False)
+        response.raise_for_status()
+        return response.json()
+    except requests.RequestException as e:
+        print(f"Erro ao buscar relatório de {application_id}: {e}")
+        return None
+
+def extract_vulnerabilities(app_id, components):
+    results = []
+
+    for component in components:
+        name = component.get("componentIdentifier", {}).get("displayName", "")
+        version = component.get("componentIdentifier", {}).get("version", "")
+        
+        upgrade = component.get("upgradeGuidance", {})
+        upgrade_short = upgrade.get("shortTerm", {}).get("version", "")
+        upgrade_long = upgrade.get("longTerm", {}).get("version", "")
+        recommended = upgrade_short or upgrade_long
+
+        policy_violations = component.get("policyViolations", [])
+        for violation in policy_violations:
+            policy_name = violation.get("policyName", "")
+            threat_level = violation.get("threatLevel", "")
+            constraints = violation.get("constraintViolations", [])
+
+            for c in constraints:
+                reason = c.get("reason", "")
+                cve = reason if "CVE" in reason else ""
+                results.append({
+                    "microservice": app_id,
+                    "dependency": name,
+                    "version": version,
+                    "recommended": recommended,
+                    "policy": policy_name,
+                    "threat": threat_level,
+                    "reason": reason,
+                    "cve": cve
+                })
+
+    return results
+
+def write_excel(vulns):
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Dependências Vulneráveis"
+
+    headers = [
+        "Microserviço", "Dependência", "Versão Atual", "Versão Recomendada",
+        "Política Violada", "Severidade", "Motivo", "CVE"
+    ]
+    ws.append(headers)
+
+    for cell in ws[1]:
+        cell.font = Font(bold=True)
+
+    for v in vulns:
+        ws.append([
+            v["microservice"],
+            v["dependency"],
+            v["version"],
+            v["recommended"],
+            v["policy"],
+            v["threat"],
+            v["reason"],
+            v["cve"]
+        ])
+
+    wb.save("relatorio_dependencias_vulneraveis.xlsx")
+    print("✔ Excel salvo com sucesso!")
+
+# ==== EXECUÇÃO ====
+def main():
+    all_vulns = []
+    apps = get_applications()
+
+    for app in apps:
+        app_id = app.get("publicId")
+        internal_id = app.get("id")
+        print(f"\n🔎 Verificando: {app_id}")
+
+        report = get_report(internal_id)
+        if not report:
+            continue
+
+        components = report.get("components", [])
+        vulns = extract_vulnerabilities(app_id, components)
+        print(f"📌 {len(vulns)} vulnerabilidades encontradas.")
+        all_vulns.extend(vulns)
+
+        time.sleep(0.5)  # controle de requisições
+
+    if all_vulns:
+        write_excel(all_vulns)
+    else:
+        print("Nenhuma vulnerabilidade encontrada.")
+
+if __name__ == "__main__":
+    main()
