@@ -1,1 +1,64 @@
 
+#!/usr/bin/env python3
+"""
+Consulta a endoflife.date e cria um CSV com o status de cada lib.
+
+Requisitos:
+  pip install pandas requests python-slugify tqdm
+"""
+import pandas as pd
+import requests, datetime as dt
+from slugify import slugify   # garante que “.NET Core” -> “dotnet” etc.
+from concurrent.futures import ThreadPoolExecutor
+from tqdm import tqdm
+
+BASE = "https://endoflife.date/api/v1"
+TODAY = dt.date.today()
+
+def latest_cycle(product: str) -> dict | None:
+    url = f"{BASE}/products/{product}/releases/latest"
+    try:
+        r = requests.get(url, timeout=5)       # use verify=... se precisar CA custom
+        if r.status_code == 200:
+            return r.json()
+    except requests.RequestException as exc:
+        print(f"⚠️  {product}: {exc}")
+    return None
+
+def classify(eol_str: str | None) -> str:
+    if not eol_str:
+        return "desconhecido"
+    try:
+        eol = dt.date.fromisoformat(eol_str)
+        return "ativo" if eol >= TODAY else "descontinuado"
+    except ValueError:
+        return "formato-invalido"
+
+def process(name: str) -> dict:
+    slug = slugify(name.lower())
+    data = latest_cycle(slug)
+    if not data:
+        return {"biblioteca": name, "slug": slug,
+                "cycle": "", "eol": "", "status": "não encontrado"}
+    return {"biblioteca": name,
+            "slug": slug,
+            "cycle": data["cycle"],
+            "eol": data["eol"],
+            "status": classify(data["eol"])}
+
+def main(xlsx_in: str, csv_out: str):
+    df_in = pd.read_excel(xlsx_in)
+    # Se sua coluna chama 'produto' mas às vezes você digita 'produtto', evite o KeyError:
+    libs = df_in.columns.str.contains("prod", case=False)
+    col = df_in.columns[libs][0]   # pega a primeira coluna que bate
+    names = df_in[col].dropna().astype(str)
+
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        rows = list(tqdm(pool.map(process, names), total=len(names)))
+
+    df_out = pd.DataFrame(rows)
+    df_out.to_csv(csv_out, index=False)
+    print(f"✅ Gerado {csv_out} com {len(df_out)} linhas")
+
+if __name__ == "__main__":
+    main("produto-versao.xlsx", "resultado-eol.csv")
