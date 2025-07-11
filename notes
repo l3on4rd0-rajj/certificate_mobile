@@ -1,9 +1,14 @@
+
 import pandas as pd
 import requests
 from datetime import datetime
+import urllib3
 
-# Caminho do arquivo Excel
-excel_path = "C:/Users/Leonardo/Documents/produtos.xlsx"  # <--- altere aqui conforme seu caso
+# Desabilita os avisos de verificação de certificado SSL
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
+# Caminho da planilha Excel (ajuste conforme o seu)
+excel_path = "C:/Users/Leonardo/Documents/produtos.xlsx"
 
 print(f"📥 Lendo planilha: {excel_path}")
 df = pd.read_excel(excel_path)
@@ -16,7 +21,8 @@ def verificar_suporte(produto, versao):
     url = f"https://endoflife.date/api/{produto}.json"
     print(f"🔎 Consultando API: {url} ...")
     try:
-        resp = requests.get(url, timeout=10)
+        # Ignora verificação SSL
+        resp = requests.get(url, timeout=10, verify=False)
         if resp.status_code != 200:
             print(f"  ⚠ Produto '{produto}' não encontrado (HTTP {resp.status_code})")
             return {"status": "Produto não encontrado", "eol": None, "latest": None}
