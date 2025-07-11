@@ -6,9 +6,9 @@ import urllib3
 import time
 
 # ==== CONFIGURAÇÕES ====
-BASE_URL = " "
-USERNAME = " "
-PASSWORD = " "
+BASE_URL = "https://nexusiq.santander.fortifyhosted.com"
+USERNAME = "santander-group-getnet-brazil service user"
+PASSWORD = "06YZOdRA9RMo"
 
 HEADERS = {
     "accept": "application/json"
@@ -34,7 +34,6 @@ def get_report(application_id):
         response.raise_for_status()
         data = response.json()
 
-        # Proteção contra estrutura incorreta
         if not isinstance(data, dict):
             print(f"⚠️ Resposta inesperada para applicationId {application_id} (esperado dict, recebido {type(data).__name__})")
             return None
@@ -118,25 +117,27 @@ def main():
         print(f"\n🔍 Verificando: {public_id}")
 
         report = get_report(application_id)
+
         if not report:
-            print(f"⚠️ Nenhum relatório encontrado para {public_id}")
+            print(f"⚠️ Nenhum relatório válido para {public_id}. Pulando.")
             continue
 
-        components = report.get("components", [])
-        if not isinstance(components, list):
-            print(f"⚠️ Estrutura inesperada no relatório de {public_id}")
+        if isinstance(report, dict):
+            components = report.get("components", [])
+        else:
+            print(f"⚠️ Estrutura inesperada no relatório de {public_id}: {type(report).__name__}")
             continue
 
         vulns = extract_vulnerabilities(public_id, components)
         print(f"📌 {len(vulns)} vulnerabilidades encontradas.")
         all_vulns.extend(vulns)
 
-        time.sleep(0.5)  # boas práticas
+        time.sleep(0.5)
 
     if all_vulns:
         write_excel(all_vulns)
     else:
-        print("✔ Nenhuma vulnerabilidade encontrada nas aplicações.")
+        print("✔ Nenhuma vulnerabilidade relevante encontrada.")
 
 if __name__ == "__main__":
     main()
