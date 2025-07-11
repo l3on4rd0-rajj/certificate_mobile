@@ -1,76 +1,101 @@
-
-import pandas as pd
+"""
+Gera um Excel com todas as dependências dos seus micro-serviços Nexus IQ
+e cruza cada <artefato-versão> com a matriz de ciclo de vida do endoflife.date.
+Requer: pip install requests pandas openpyxl
+"""
+from __future__ import annotations
+import os
 import requests
-from datetime import datetime
+import pandas as pd
+from requests.auth import HTTPBasicAuth
+from urllib.parse import quote_plus
 import urllib3
 
-# Desabilita os avisos de verificação de certificado SSL
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-# Caminho da planilha Excel (ajuste conforme o seu)
-excel_path = "C:/Users/Leonardo/Documents/produtos.xlsx"
+# ----------------------------------------------------------------------
+# 1) Configuração – use variáveis de ambiente em vez de credenciais fixas
+# ----------------------------------------------------------------------
+BASE_URL = "https://nexusiq.santander.fortifyhosted.com"
+USERNAME = os.getenv("NEXUS_USERNAME")
+PASSWORD = os.getenv("NEXUS_PASSWORD")
+HEADERS  = {"Accept": "application/json"}
+AUTH     = HTTPBasicAuth(USERNAME, PASSWORD)
 
-print(f"📥 Lendo planilha: {excel_path}")
-df = pd.read_excel(excel_path)
+# ----------------------------------------------------------------------
+# 2) Nexus IQ
+# ----------------------------------------------------------------------
+def get_applications() -> list[dict]:
+    url = f"{BASE_URL}/api/v2/applications?includeCategories=false"
+    r = requests.get(url, headers=HEADERS, auth=AUTH, verify=False, timeout=30)
+    r.raise_for_status()
+    return r.json().get("applications", [])
 
-print(f"📊 Total de registros: {len(df)}\n")
+def get_components(public_id: str) -> list[dict]:
+    url = f"{BASE_URL}/api/v2/reports/{quote_plus(public_id)}/components"
+    r = requests.get(url, headers=HEADERS, auth=AUTH, verify=False, timeout=60)
+    if r.status_code != 200:          # mantém o fluxo mesmo se falhar
+        print(f"[WARN] Não foi possível obter dependências de {public_id}: {r.status_code}")
+        return []
+    return r.json()
 
-resultados = []
+# ----------------------------------------------------------------------
+# 3) endoflife.date
+# ----------------------------------------------------------------------
+EOL_BASE = "https://endoflife.date/api/v1"
 
-def verificar_suporte(produto, versao):
-    url = f"https://endoflife.date/api/{produto}.json"
-    print(f"🔎 Consultando API: {url} ...")
-    try:
-        # Ignora verificação SSL
-        resp = requests.get(url, timeout=10, verify=False)
-        if resp.status_code != 200:
-            print(f"  ⚠ Produto '{produto}' não encontrado (HTTP {resp.status_code})")
-            return {"status": "Produto não encontrado", "eol": None, "latest": None}
+def build_eol_map() -> dict[str, dict]:
+    """
+    Constrói um dicionário: "<produto>-<versão>"  ->  {release_date, eol, lts}
+    """
+    prod_list = requests.get(f"{EOL_BASE}/products.json", timeout=30)
+    prod_list.raise_for_status()
 
-        ciclos = resp.json()
-        for ciclo in ciclos:
-            if str(ciclo["cycle"]) == str(versao):
-                eol_data = ciclo.get("eol")
-                latest = ciclo.get("latest", "")
-                if eol_data and eol_data != "false":
-                    eol_date = datetime.strptime(eol_data, "%Y-%m-%d")
-                    ainda_em_suporte = eol_date > datetime.today()
-                else:
-                    ainda_em_suporte = True
-                    eol_date = None
+    eol_map: dict[str, dict] = {}
+    for product in prod_list.json():            # product["slug"] ex.: "python"
+        slug = product["slug"]
+        cycles = requests.get(f"{EOL_BASE}/products/{slug}.json", timeout=30).json().get("cycles", [])
+        for c in cycles:
+            key = f"{slug}-{str(c['cycle']).lower()}"
+            eol_map[key] = {
+                "release": c.get("releaseDate"),
+                "eol":     c.get("eol"),
+                "lts":     c.get("lts"),
+            }
+    return eol_map
 
-                status = "✅ Em suporte" if ainda_em_suporte else "❌ EOL"
-                print(f"  ➤ Produto: {produto}, Versão: {versao}, Status: {status}, Última versão: {latest}, EOL: {eol_data}")
-                return {
-                    "status": status,
-                    "eol": eol_date.strftime("%Y-%m-%d") if eol_date else "Sem EOL",
-                    "latest": latest
-                }
+# ----------------------------------------------------------------------
+# 4) Consolidação e Excel
+# ----------------------------------------------------------------------
+def main() -> None:
+    apps       = get_applications()
+    eol_lookup = build_eol_map()
+    rows: list[dict] = []
 
-        print(f"  ❓ Versão '{versao}' não encontrada para o produto '{produto}'")
-        return {"status": "Versão não encontrada", "eol": None, "latest": None}
+    for app in apps:
+        name, pid = app["name"], app["publicId"]
+        print(f"⏳  Buscando dependências de {name}…")
+        for comp in get_components(pid):
+            coords = comp.get("componentIdentifier", {}).get("coordinates", {})
+            artifact = coords.get("artifactId")
+            version  = coords.get("version")
+            if not (artifact and version):
+                continue
 
-    except Exception as e:
-        print(f"  ⚠ Erro ao consultar '{produto}': {str(e)}")
-        return {"status": f"Erro: {str(e)}", "eol": None, "latest": None}
+            key = f"{artifact.lower()}-{version}"
+            eol = eol_lookup.get(key, {})
+            rows.append({
+                "Microserviço"      : name,
+                "Dependência"       : artifact,
+                "Versão atual"      : version,
+                "Data de lançamento": eol.get("release", ""),
+                "Data de EOL"       : eol.get("eol", ""),
+                "LTS"               : eol.get("lts", ""),
+            })
 
-# Processar cada linha
-for i, row in df.iterrows():
-    produto = str(row["produto"]).strip().lower()
-    versao = str(row["versao"]).strip()
-    print(f"\n🔄 [{i+1}/{len(df)}] Verificando: {produto} {versao}")
-    resultado = verificar_suporte(produto, versao)
-    resultados.append({
-        "produto": produto,
-        "versao": versao,
-        "status": resultado["status"],
-        "eol": resultado["eol"],
-        "ultima_versao": resultado["latest"]
-    })
+    df = pd.DataFrame(rows)
+    df.to_excel("relatorio_dependencias_com_eol.xlsx", index=False)
+    print("✅  relatorio_dependencias_com_eol.xlsx gerado com sucesso!")
 
-# Salvar resultado
-output_file = "resultado_endoflife.xlsx"
-df_resultado = pd.DataFrame(resultados)
-df_resultado.to_excel(output_file, index=False)
-
-print(f"\n✅ Concluído! Resultado salvo como '{output_file}'")
+if __name__ == "__main__":
+    main()
