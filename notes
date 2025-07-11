@@ -1,35 +1,59 @@
 
 import pandas as pd
 import requests
+from datetime import datetime
 
-# Caminho do arquivo Excel com as colunas 'produto' e 'versao'
-excel_path = "caminho_para_seu_arquivo.xlsx"
+# Caminho do arquivo Excel com colunas 'produto' e 'versao'
+excel_path = "caminho_para_sua_planilha.xlsx"
 
-# Ler a planilha
+# Carregar a planilha
 df = pd.read_excel(excel_path)
 
-# Função para verificar no NPM se a versão está ativa
-def verificar_pacote_npm(nome, versao):
-    url = f"https://registry.npmjs.org/{nome}"
+# Lista para armazenar os resultados
+resultados = []
+
+# Função para consultar a API do endoflife.date
+def verificar_suporte(produto, versao):
+    url = f"https://endoflife.date/api/{produto}.json"
     try:
-        resposta = requests.get(url, timeout=10)
-        if resposta.status_code == 200:
-            dados = resposta.json()
-            ultima_versao = dados.get("dist-tags", {}).get("latest", "")
-            versoes = dados.get("versions", {})
-            versao_info = versoes.get(versao, {})
-            deprecated = versao_info.get("deprecated", False)
-            return pd.Series([ultima_versao, not deprecated])
-        else:
-            return pd.Series(["Não encontrado", False])
+        resp = requests.get(url, timeout=10)
+        if resp.status_code != 200:
+            return {"status": "Produto não encontrado", "eol": None, "latest": None}
+
+        ciclos = resp.json()
+        for ciclo in ciclos:
+            if str(ciclo["cycle"]) == str(versao):
+                eol_data = ciclo.get("eol")
+                latest = ciclo.get("latest", "")
+                if eol_data and eol_data != "false":
+                    eol_date = datetime.strptime(eol_data, "%Y-%m-%d")
+                    ainda_em_suporte = eol_date > datetime.today()
+                else:
+                    ainda_em_suporte = True
+                    eol_date = None
+                return {
+                    "status": "Em suporte" if ainda_em_suporte else "EOL",
+                    "eol": eol_date.strftime("%Y-%m-%d") if eol_date else "Sem EOL",
+                    "latest": latest
+                }
+        return {"status": "Versão não encontrada", "eol": None, "latest": None}
     except Exception as e:
-        return pd.Series([f"Erro: {e}", False])
+        return {"status": f"Erro: {e}", "eol": None, "latest": None}
 
-# Aplicar a verificação para cada linha
-df[["versao_mais_recente", "versao_esta_ativa"]] = df.apply(
-    lambda row: verificar_pacote_npm(row["produto"], str(row["versao"])), axis=1
-)
+# Aplicar a verificação a cada linha
+for _, row in df.iterrows():
+    produto = str(row["produto"]).strip().lower()
+    versao = str(row["versao"]).strip()
+    resultado = verificar_suporte(produto, versao)
+    resultados.append({
+        "produto": produto,
+        "versao": versao,
+        "status": resultado["status"],
+        "eol": resultado["eol"],
+        "ultima_versao": resultado["latest"]
+    })
 
-# Salvar os resultados
-df.to_excel("resultado_analise_pacotes.xlsx", index=False)
-print("Arquivo 'resultado_analise_pacotes.xlsx' gerado com sucesso.")
+# Criar DataFrame e salvar resultado
+df_resultado = pd.DataFrame(resultados)
+df_resultado.to_excel("resultado_endoflife.xlsx", index=False)
+print("✅ Resultado salvo como 'resultado_endoflife.xlsx'")
