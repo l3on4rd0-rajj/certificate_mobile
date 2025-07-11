@@ -1,1 +1,35 @@
 
+import pandas as pd
+import requests
+
+# Caminho do arquivo Excel com as colunas 'produto' e 'versao'
+excel_path = "caminho_para_seu_arquivo.xlsx"
+
+# Ler a planilha
+df = pd.read_excel(excel_path)
+
+# Função para verificar no NPM se a versão está ativa
+def verificar_pacote_npm(nome, versao):
+    url = f"https://registry.npmjs.org/{nome}"
+    try:
+        resposta = requests.get(url, timeout=10)
+        if resposta.status_code == 200:
+            dados = resposta.json()
+            ultima_versao = dados.get("dist-tags", {}).get("latest", "")
+            versoes = dados.get("versions", {})
+            versao_info = versoes.get(versao, {})
+            deprecated = versao_info.get("deprecated", False)
+            return pd.Series([ultima_versao, not deprecated])
+        else:
+            return pd.Series(["Não encontrado", False])
+    except Exception as e:
+        return pd.Series([f"Erro: {e}", False])
+
+# Aplicar a verificação para cada linha
+df[["versao_mais_recente", "versao_esta_ativa"]] = df.apply(
+    lambda row: verificar_pacote_npm(row["produto"], str(row["versao"])), axis=1
+)
+
+# Salvar os resultados
+df.to_excel("resultado_analise_pacotes.xlsx", index=False)
+print("Arquivo 'resultado_analise_pacotes.xlsx' gerado com sucesso.")
