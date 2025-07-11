@@ -1,1 +1,147 @@
 
+import requests
+from requests.auth import HTTPBasicAuth
+import openpyxl
+from openpyxl.styles import Font
+import urllib3
+import time
+
+# Configurações
+BASE_URL = ""
+USERNAME = ""
+PASSWORD = ""  # Substitua se necessário
+
+HEADERS = {
+    "accept": "application/json"
+}
+
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
+def get_applications():
+    try:
+        url = f"{BASE_URL}/api/v2/applications?includeCategories=false"
+        response = requests.get(url, headers=HEADERS, auth=HTTPBasicAuth(USERNAME, PASSWORD), verify=False)
+        response.raise_for_status()
+        return response.json().get("applications", [])
+    except requests.RequestException as e:
+        print(f"✖ Erro ao buscar aplicações: {e}")
+        return []
+
+def get_versions(public_id):
+    try:
+        url = f"{BASE_URL}/api/v2/reports/applications/{public_id}/versions"
+        response = requests.get(url, headers=HEADERS, auth=HTTPBasicAuth(USERNAME, PASSWORD), verify=False)
+        response.raise_for_status()
+        return response.json().get("versions", [])
+    except requests.RequestException as e:
+        print(f"✖ Erro ao buscar versões para {public_id}: {e}")
+        return []
+
+def get_policy_violations(public_id, version_id):
+    try:
+        url = f"{BASE_URL}/api/v2/reports/applications/{public_id}/versions/{version_id}/policy"
+        response = requests.get(url, headers=HEADERS, auth=HTTPBasicAuth(USERNAME, PASSWORD), verify=False)
+        response.raise_for_status()
+    except requests.RequestException as e:
+        print(f"✖ Erro ao buscar política para versão {version_id} de {public_id}: {e}")
+        return []
+
+    data = response.json()
+    results = []
+
+    for component in data.get("components", []):
+        name = component.get("componentIdentifier", {}).get("displayName", "")
+        version = component.get("componentIdentifier", {}).get("version", "")
+        violations = component.get("policyViolations", [])
+
+        # Upgrade guidance
+        upgrade_short = ""
+        upgrade_long = ""
+        upgrade = component.get("upgradeGuidance", {})
+        upgrade_short = upgrade.get("shortTerm", {}).get("version", "")
+        upgrade_long = upgrade.get("longTerm", {}).get("version", "")
+
+        for v in violations:
+            threat_level = v.get("threatLevel", "")
+            policy_name = v.get("policyName", "")
+            constraints = v.get("constraintViolations", [])
+            for c in constraints:
+                reason = c.get("reason", "")
+                cve = reason if "CVE" in reason else ""
+                results.append({
+                    "microservice": public_id,
+                    "dependency": name,
+                    "version": version,
+                    "recommended": upgrade_short or upgrade_long,
+                    "policy": policy_name,
+                    "threat": threat_level,
+                    "reason": reason,
+                    "cve": cve
+                })
+
+    return results
+
+def write_excel(vulns):
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Vulnerabilidades"
+
+    headers = [
+        "Microserviço", "Dependência", "Versão Atual", "Versão Recomendada",
+        "Política", "Severidade", "Motivo", "CVE"
+    ]
+    ws.append(headers)
+
+    for cell in ws[1]:
+        cell.font = Font(bold=True)
+
+    for v in vulns:
+        ws.append([
+            v["microservice"],
+            v["dependency"],
+            v["version"],
+            v["recommended"],
+            v["policy"],
+            v["threat"],
+            v["reason"],
+            v["cve"]
+        ])
+
+    wb.save("vulnerabilidades_dependencias.xlsx")
+    print("✔ Arquivo Excel salvo com sucesso!")
+
+def main():
+    all_vulns = []
+    applications = get_applications()
+
+    for app in applications:
+        public_id = app.get("publicId")
+        print(f"\n🔍 Verificando app: {public_id}")
+
+        versions = get_versions(public_id)
+        if not versions:
+            print("⚠ Nenhuma versão encontrada.")
+            continue
+
+        report_url = versions[0].get("reportDataUrl")
+        if not report_url:
+            print(f"⚠ Versão mais recente de {public_id} não tem reportDataUrl.")
+            continue
+
+        latest_version = versions[0].get("version", "")
+        version_id = report_url.split("/")[-1]
+        print(f"🟢 Versão mais recente: {latest_version}")
+
+        vulns = get_policy_violations(public_id, version_id)
+        print(f"📌 {len(vulns)} vulnerabilidades encontradas.")
+        all_vulns.extend(vulns)
+
+        time.sleep(0.5)  # Evita sobrecarga da API
+
+    if all_vulns:
+        write_excel(all_vulns)
+    else:
+        print("⚠ Nenhuma vulnerabilidade encontrada em nenhuma aplicação.")
+
+if __name__ == "__main__":
+    main()
