@@ -1,15 +1,3 @@
-const jsonData = JSON.parse(responseBody);
+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
 
-// Verifica se o status HTTP é 201
-if (response.status === 201) {
-  console.log("Status 201: Sucesso na requisição.");
-} else {
-  console.error("Erro: status esperado 201, recebido:", response.status);
-}
-
-// Salva o token como variável global
-if (jsonData?.data?.token) {
-  setGlobalVariable("AUTHITOKEN_SSC", jsonData.data.token);
-} else {
-  console.warn("Token não encontrado na resposta.");
-}
+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
