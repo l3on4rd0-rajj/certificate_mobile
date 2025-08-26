@@ -1,1 +1,244 @@
+#!/usr/bin/env bash
+set -euo pipefail
 
+BOLD="\e[1m"; DIM="\e[2m"; RED="\e[31m"; CYAN="\e[36m"; GREEN="\e[32m"; NC="\e[0m"
+VERSION="v2.0.0"
+
+banner() {
+cat <<BNR
+  _____ __              __            _
+  / ___// /_  ____  ____/ /___ _____  (_)___  ___  _____
+  \__ \/ __ \/ __ \/ __  / __ \`/ __ \/ /_  / / _ \/ ___/
+ ___/ / / / / /_/ / /_/ / /_/ / / / / / / /_/  __/ /
+/____/_/ /_/\____/\__,_/\__,_/_/ /_/_/ /___/\___/_/  $VERSION
+
+                     Shodanizer — Bash helper pro Shodan CLI
+
+Uso: sd [opções]
+  -h, --help                    Mostra ajuda
+  -d, --domain <domínio>        Busca por domínio  (hostname:.<domínio>)  [CSV simples]
+  -i, --ip <ip>                 Detalhes do host (banners completos)
+  -o, --output <arquivo>        Arquivo de saída (csv/json)
+  -E, --enrich <domínio>        Busca por domínio e ENRIQUECE por IP (linha por porta)
+  -r, --rate <s>                Delay entre hosts no enrich (ex: 0.2)  [default: 0]
+  -w, --workers <n>             Paralelismo no enrich usando xargs -P< n > [default: 4]
+
+Exemplos:
+  sd -d getnet.com.br -o getnet_raw.csv
+  sd -E getnet.com.br -o getnet_enriched.csv -w 6 -r 0.2
+  sd -i 131.255.186.103 -o host_131255186103.json
+BNR
+}
+
+usage(){ banner; exit 0; }
+
+have() { command -v "$1" >/dev/null 2>&1; }
+
+need_shodan() {
+  if ! have shodan; then
+    echo "[!] Shodan CLI não encontrado. Instale com: pip3 install -U shodan"
+    exit 1
+  fi
+}
+
+need_jq() {
+  if ! have jq; then
+    echo "[!] 'jq' não encontrado. Instale com: sudo apt-get install jq"
+    exit 1
+  fi
+}
+
+print_rule() {
+  local char="${1:-─}"
+  printf "${DIM}"; printf "%0.s$char" $(seq 1 "$(tput cols 2>/dev/null || echo 80)"); printf "${NC}\n"
+}
+
+DOMAIN=""; IP=""; OUT=""; ENRICH=""; RATE="0"; WORKERS="4"
+
+# parse args
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -h|--help) usage ;;
+    -d|--domain) DOMAIN="${2:-}"; shift 2 ;;
+    -i|--ip) IP="${2:-}"; shift 2 ;;
+    -o|--output) OUT="${2:-}"; shift 2 ;;
+    -E|--enrich) ENRICH="${2:-}"; shift 2 ;;
+    -r|--rate) RATE="${2:-0}"; shift 2 ;;
+    -w|--workers) WORKERS="${2:-4}"; shift 2 ;;
+    *) echo "[!] argumento desconhecido: $1"; usage ;;
+  esac
+done
+
+need_shodan
+ts="$(date +%Y%m%d_%H%M%S)"
+
+# validações
+if [[ -n "$DOMAIN" && -n "$IP" ]] || [[ -n "$DOMAIN" && -n "$ENRICH" ]] || [[ -n "$IP" && -n "$ENRICH" ]]; then
+  echo "[!] Use apenas um modo por vez: -d OU -i OU -E"
+  exit 1
+fi
+if [[ -z "$DOMAIN" && -z "$IP" && -z "$ENRICH" ]]; then usage; fi
+
+########################################
+# DOMAIN MODE (CSV simples vindo do search)
+########################################
+if [[ -n "$DOMAIN" ]]; then
+  raw="${OUT:-${DOMAIN//\//_}_$ts.csv}"
+  nice="${raw%.csv}_pretty.txt"
+
+  echo -e "${BOLD}${CYAN}[*] Buscando por domínio:${NC} $DOMAIN"
+  print_rule
+
+  shodan search --fields ip_str,port,org,hostnames --separator , "hostname:.${DOMAIN}" \
+    | tee "$raw" >/dev/null
+
+  { echo "ip,port,org,hostnames"; cat "$raw"; } | column -t -s, > "$nice"
+
+  uniq_ips=$(cut -d',' -f1 "$raw" | sort -u | wc -l | tr -d ' ')
+  total=$(wc -l < "$raw" | tr -d ' ')
+  uniq_ports=$(cut -d',' -f2 "$raw" | sort -u | tr -d ' ' | tr '\n' ',' | sed 's/,$//')
+  ports_count=$(cut -d',' -f2 "$raw" | sort -u | wc -l | tr -d ' ')
+
+  echo -e "${BOLD}Resultados (tabela):${NC}"
+  print_rule
+  head -n 200 "$nice"; [[ $(wc -l < "$nice") -gt 200 ]] && echo -e "${DIM}(200 primeiras linhas — ver $nice)${NC}"
+  print_rule
+
+  echo -e "${GREEN}Resumo:${NC}"
+  echo "  • Linhas (banners): $total"
+  echo "  • IPs únicos:       $uniq_ips"
+  echo "  • Portas únicas:    $ports_count  (${uniq_ports:-—})"
+  echo
+  echo -e "${GREEN}Arquivos gerados:${NC}"
+  echo "  • CSV cru:          $raw"
+  echo "  • Tabela formatada: $nice"
+  exit 0
+fi
+
+########################################
+# IP MODE (host detail + resumo)
+########################################
+if [[ -n "$IP" ]]; then
+  need_jq
+  out="${OUT:-${IP//\//_}_$ts.json}"
+
+  echo -e "${BOLD}${CYAN}[*] Buscando por IP:${NC} $IP"
+  print_rule
+
+  shodan host --format json "$IP" | tee "$out" >/dev/null
+
+  echo -e "${BOLD}Resumo do host:${NC}"
+  print_rule
+  jq -r '
+    def n(v): if v==null or v=="" then "—" else v end;
+    "  • Org:      " + (n(.org)) + "\n" +
+    "  • ISP:      " + (n(.isp)) + "\n" +
+    "  • ASN:      " + (n(.asn)) + "\n" +
+    "  • País/Cidade: " + (n(.country_name)) + " / " + (n(.city)) + "\n" +
+    "  • Hostnames: " + ( ( (.hostnames//[]) + (.domains//[]) ) | unique | join(", ") | if .=="" then "—" else . end ) + "\n" +
+    "  • Tags:      " + ( ( .tags//[] | join(", ") ) | if .=="" then "—" else . end )
+  ' "$out"
+
+  echo
+  echo -e "${BOLD}Portas/serviços (campo por coluna):${NC}"
+  print_rule
+  jq -r '
+    ( "PORT  PROTO  PRODUTO               VERSÃO            HTTP_TITLE             HTTP_SERVER     SSL_VER  SSL_CIPHER        CVEs" ),
+    ( .data[] | [
+        (.port|tostring),
+        (.transport // "—"),
+        (.product // "—"),
+        (.version // "—"),
+        (.http.title // "—"),
+        (.http.server // "—"),
+        (.ssl.version // "—"),
+        (.ssl.cipher // "—"),
+        ( ( .vulns | keys ) // [] | join(";") | if .=="" then "—" else . end )
+      ] | @tsv )
+  ' "$out" | column -t
+
+  echo
+  echo -e "${GREEN}Arquivo gerado:${NC} $out"
+  exit 0
+fi
+
+########################################
+# ENRICH MODE (domain → search → host por IP → CSV enriquecido)
+########################################
+if [[ -n "$ENRICH" ]]; then
+  need_jq
+  out="${OUT:-${ENRICH//\//_}_enriched_$ts.csv}"
+  tmpdir="$(mktemp -d)"
+  raw_ips="$tmpdir/ips.txt"
+  echo -e "${BOLD}${CYAN}[*] Enriquecendo domínio:${NC} $ENRICH"
+  print_rule
+
+  # 1) busca rápida para coletar IPs únicos
+  echo "[*] Coletando IPs com shodan search…"
+  shodan search --fields ip_str --separator , "hostname:.${ENRICH}" \
+    | sort -u > "$raw_ips"
+
+  ip_count=$(wc -l < "$raw_ips" | tr -d ' ')
+  if [[ "$ip_count" -eq 0 ]]; then
+    echo "[!] Nenhum IP encontrado para $ENRICH"
+    exit 1
+  fi
+  echo "[*] IPs únicos: $ip_count"
+  print_rule
+
+  # 2) cabeçalho do CSV enriquecido
+  {
+    echo "ip,last_update,org,isp,asn,city,country,hostnames,domains,tags,port,transport,product,version,http_title,http_server,ssl_version,ssl_cipher,ssl_cert_subject_cn,ssl_cert_issuer_cn,ja3,ja3s,cpe,vulns,module,timestamp"
+  } > "$out"
+
+  # 3) função que consulta um IP e imprime linhas por porta
+  enrich_ip() {
+    local ip="$1"
+    # delay gentil com rate-limit
+    awk -v r="$RATE" 'BEGIN{ if (r>0) { system("sleep " r) } }' >/dev/null 2>&1
+
+    shodan host --format json "$ip" 2>/dev/null | jq -r '
+      def j(v): if v==null then "" else v end;
+      def joincsv(a): (a // []) | map(gsub("\""; "\"\"")) | join(",");
+      def csvsafe(x): if x==null then "" else (x|tostring|gsub("\""; "\"\"")) end;
+
+      . as $h |
+      ($h.data // [null])[] as $b |
+      [
+        csvsafe($h.ip_str),
+        csvsafe($h.last_update),
+        csvsafe($h.org), csvsafe($h.isp), csvsafe($h.asn),
+        csvsafe($h.location.city), csvsafe($h.location.country_name),
+        csvsafe( ($h.hostnames//[]) | join("|") ),
+        csvsafe( ($h.domains//[])   | join("|") ),
+        csvsafe( ($h.tags//[])      | join("|") ),
+
+        csvsafe($b.port), csvsafe($b.transport),
+        csvsafe($b.product), csvsafe($b.version),
+
+        csvsafe($b.http.title),  csvsafe($b.http.server),
+
+        csvsafe($b.ssl.version), csvsafe($b.ssl.cipher),
+        csvsafe($b.ssl.cert.subject.CN), csvsafe($b.ssl.cert.issuer.CN),
+        csvsafe($b.ssl.ja3), csvsafe($b.ssl.ja3s),
+
+        csvsafe( ($b.cpe//[]) | join("|") ),
+        csvsafe( ( ($b.vulns|keys) // [] ) | join("|") ),
+        csvsafe($b._shodan.module),
+        csvsafe($b.timestamp)
+      ] | @csv
+    ' >> "$out" || true
+  }
+
+  export -f enrich_ip
+  export RATE
+
+  echo "[*] Consultando detalhes por IP (workers=$WORKERS, rate=$RATE s)…"
+  # GNU parallel não é padrão; usamos xargs -P
+  < "$raw_ips" xargs -P "$WORKERS" -n 1 -I {} bash -lc 'enrich_ip "$@"' _ {}
+
+  echo -e "${GREEN}Arquivo enriquecido:${NC} $out"
+  echo -e "${DIM}(colunas: http_title/http_server, ssl_*, cpe, vulns(CVE), ja3/ja3s, etc.)${NC}"
+  rm -rf "$tmpdir"
+  exit 0
+fi
